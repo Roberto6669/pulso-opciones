@@ -1,5 +1,9 @@
 # Changelog
 
+## WEB5.0 — v1.2 — 2026-08-18
+- Weeklies OTM baratas para presupuestos de $25 y $50 (prima × 100)
+- Nombres líquidos baratos: F, SOFI, NIO, SNAP, MARA, SOXL + strikes lejanos en SPY/QQQ/AAPL/NVDA
+
 ## WEB5.0 — v1.1 — 2026-08-18
 - Sin símbolos: escanea las más activas (volumen + liquidez + tendencia)
 - Con símbolos: filtra esa lista
