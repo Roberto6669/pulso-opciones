@@ -1,0 +1,8 @@
+# Changelog
+
+## WEB5.0 — v1.0 — 2026-08-18
+- Escáner desde cero (independiente de WEB4)
+- Presupuestos: $25, $50, $100, $250, $500, $1,000
+- Fecha de vencimiento + botón Próximo viernes
+- Filtro por símbolos y lado (calls / puts / ambos)
+- Costo = prima × 100; solo contratos ≤ presupuesto
