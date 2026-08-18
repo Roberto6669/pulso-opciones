@@ -1,5 +1,11 @@
 # Changelog
 
+## WEB5.0 — v1.1 — 2026-08-18
+- Sin símbolos: escanea las más activas (volumen + liquidez + tendencia)
+- Con símbolos: filtra esa lista
+- Layout de dos columnas: datos a la izquierda, resultados a la derecha
+- Score de oportunidad (no es consejo financiero)
+
 ## WEB5.0 — v1.0 — 2026-08-18
 - Escáner desde cero (independiente de WEB4)
 - Presupuestos: $25, $50, $100, $250, $500, $1,000
