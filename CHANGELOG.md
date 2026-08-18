@@ -1,7 +1,7 @@
 # Changelog
 
-## WEB5.0 — v1.6 — 2026-08-18
-- Montos siempre con 2 decimales
-- Rediseño plano (sin esquinas redondas), más gráficos
-- Score circular rojo→verde con flecha blanca y número al centro
-- Logo Pulso + Roberto Escobar + versión en header y footer
+## WEB5.0 — V1.7 — 2026-08-18
+- Header al estilo WEB4: monograma RE, ROBERTO ESCOBAR CITTY, producto, cargo y versión
+- Presupuesto en grilla 3×2, todos los botones del mismo tamaño
+- Más espacio entre bloques, gráficos y textos
+- Cada ejemplo de dinero: Invertiste / Ganas o Pierdes / Te quedan
