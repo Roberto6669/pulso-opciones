@@ -53,7 +53,7 @@ function intrinsic(side: "call" | "put", strike: number, spot: number) {
   return side === "call" ? Math.max(spot - strike, 0) : Math.max(strike - spot, 0);
 }
 
-function nCdf(x: number) {
+export function nCdf(x: number) {
   const a1 = 0.254829592;
   const a2 = -0.284496736;
   const a3 = 1.421413741;

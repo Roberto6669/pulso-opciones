@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { chartSeries, computeIndicators, judge, type SignalKind } from "./analysis";
+import { chartSeries, computeIndicators, judge, sparkline, type SignalKind, type SparkPoint } from "./analysis";
 import {
   fetchChart,
   fetchOptionChain,
@@ -198,6 +198,7 @@ export type ScanBatch = {
   analyzed: number;
   omitted: string[];
   log: string[];
+  minis: Record<string, SparkPoint[]>;
 };
 
 function trendFrom(kind: SignalKind, changePct: number): Trend {
@@ -207,6 +208,7 @@ function trendFrom(kind: SignalKind, changePct: number): Trend {
 }
 
 function pickLegs(legs: LiveOption[], budget: number, spot: number) {
+  const maxDist = budget <= 50 ? 0.22 : budget <= 100 ? 0.16 : 0.12;
   return legs
     .map((leg) => {
       const mid = (leg.bid + leg.ask) / 2 || leg.last;
@@ -225,9 +227,9 @@ function pickLegs(legs: LiveOption[], budget: number, spot: number) {
       (row) =>
         row.debit > 0 &&
         row.debit <= budget &&
-        row.dist <= 0.12 &&
-        row.spreadPct <= 0.22 &&
-        (row.leg.volume > 0 || row.leg.openInterest > 20),
+        row.dist <= maxDist &&
+        row.spreadPct <= 0.25 &&
+        (row.leg.volume > 0 || row.leg.openInterest > 10),
     )
     .sort((a, b) => b.flow - a.flow - (a.dist - b.dist) * 4000)
     .slice(0, 3)
@@ -260,6 +262,7 @@ export const scanBatch = createServerFn({ method: "POST" })
     const hits: Ranked[] = [];
     const omitted: string[] = [];
     const log: string[] = [];
+    const minis: Record<string, SparkPoint[]> = {};
     let analyzed = 0;
 
     const jobs = data.symbols.map(async (symbol) => {
@@ -267,6 +270,7 @@ export const scanBatch = createServerFn({ method: "POST" })
         const bundle = await fetchChart(symbol, "3mo");
         const analysis = analyzeBundle(bundle);
         analyzed += 1;
+        minis[symbol] = sparkline(bundle.bars);
         const chain = await fetchOptionChain(symbol, data.dteMin, data.dteMax);
         const trend = trendFrom(analysis.verdict.kind, analysis.changePct);
         const legs = [
@@ -316,13 +320,14 @@ export const scanBatch = createServerFn({ method: "POST" })
     await Promise.all(jobs);
 
     hits.sort((a, b) => b.score - a.score || b.vol - a.vol);
-    return { hits, analyzed, omitted, log };
+    return { hits, analyzed, omitted, log, minis };
   });
 
 export type EquityBatch = {
   hits: EquityHit[];
   omitted: string[];
   log: string[];
+  minis: Record<string, SparkPoint[]>;
 };
 
 export const scanEquities = createServerFn({ method: "POST" })
@@ -341,6 +346,7 @@ export const scanEquities = createServerFn({ method: "POST" })
     const hits: EquityHit[] = [];
     const omitted: string[] = [];
     const log: string[] = [];
+    const minis: Record<string, SparkPoint[]> = {};
 
     await Promise.all(
       data.symbols.map(async (symbol) => {
@@ -348,6 +354,7 @@ export const scanEquities = createServerFn({ method: "POST" })
           const bundle = await fetchChart(symbol, "3mo");
           const analysis = analyzeBundle(bundle);
           const closes = bundle.bars.map((b) => b.c).filter((c) => c > 0);
+          minis[symbol] = sparkline(bundle.bars);
           hits.push({
             s: analysis.symbol,
             name: analysis.name,
@@ -374,6 +381,6 @@ export const scanEquities = createServerFn({ method: "POST" })
     );
 
     hits.sort((a, b) => b.score - a.score || Math.abs(b.changePct) - Math.abs(a.changePct));
-    return { hits, omitted, log };
+    return { hits, omitted, log, minis };
   });
 

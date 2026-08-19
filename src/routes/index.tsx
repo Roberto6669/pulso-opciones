@@ -5,11 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PriceChart } from "@/components/price-chart";
 import { EstimatePanel } from "@/components/estimate-panel";
+import { MiniChart } from "@/components/mini-chart";
 import { OptionTicket } from "@/components/option-ticket";
 import { EquityTicket } from "@/components/equity-ticket";
 import { ScoreBar, MiniScore } from "@/components/score-bar";
 import { APP_VERSION } from "@/components/brand";
 import { analyzeTicker, scanBatch, scanEquities, type PublicAnalysis } from "@/lib/market.fns";
+import type { SparkPoint } from "@/lib/analysis";
 import { estimatePayoff } from "@/lib/estimate";
 import { actionFor, confidenceLabel, dteRisk, setupTags, whyAppeared } from "@/lib/setup";
 import { cn, formatMoney, formatPct } from "@/lib/utils";
@@ -66,15 +68,20 @@ function Home() {
   const [note, setNote] = useState("");
   const [eqHits, setEqHits] = useState<EquityHit[]>([]);
   const [pickedEq, setPickedEq] = useState<EquityHit | null>(null);
+  const [minis, setMinis] = useState<Record<string, SparkPoint[]>>({});
   const scanId = useRef(0);
   const isOptions = mode === "options";
 
   const days = picked?.exp ? dte(picked.exp) : dte(exp);
   const risk = dteRisk(days);
   const friday = nextFriday();
-  const best = isOptions ? (hits[0]?.score ?? 0) : (eqHits[0]?.score ?? 0);
-  const callN = hits.filter((h) => h.t === "call").length;
-  const putN = hits.filter((h) => h.t === "put").length;
+  const visibleHits = useMemo(
+    () => hits.filter((h) => h.debit <= budget + 0.009),
+    [hits, budget],
+  );
+  const best = isOptions ? (visibleHits[0]?.score ?? 0) : (eqHits[0]?.score ?? 0);
+  const callN = visibleHits.filter((h) => h.t === "call").length;
+  const putN = visibleHits.filter((h) => h.t === "put").length;
   const activeSymbol = isOptions ? picked?.s : pickedEq?.s;
 
   useEffect(() => {
@@ -87,6 +94,7 @@ function Home() {
     setAnalysis(null);
     setOmitted([]);
     setScanLog([]);
+    setMinis({});
     setFiltersOpen(true);
     scanId.current += 1;
   }, [mode]);
@@ -100,11 +108,15 @@ function Home() {
       }
       return;
     }
+    const pool = hits.filter((h) => h.debit <= budget + 0.009);
+    const list = pool.length ? pool : hits;
     setPicked((prev) => {
-      if (prev && hits.some((h) => h.s === prev.s && h.k === prev.k && h.t === prev.t)) return prev;
-      return hits[0];
+      if (prev && list.some((h) => h.s === prev.s && h.k === prev.k && h.t === prev.t && h.exp === prev.exp)) {
+        return prev;
+      }
+      return list[0];
     });
-  }, [hits, isOptions, scanned, scanning]);
+  }, [hits, budget, isOptions, scanned, scanning]);
 
   useEffect(() => {
     if (isOptions) return;
@@ -190,6 +202,7 @@ function Home() {
     setHits([]);
     setEqHits([]);
     setOmitted([]);
+    setMinis({});
     setScanLog([`Consultando ${pool.length} símbolo(s) en el mercado…`]);
     setProgress({ done: 0, total: pool.length, label: pool[0] ?? "" });
     setPicked(null);
@@ -200,6 +213,7 @@ function Home() {
     const lines: string[] = [`Consultando ${pool.length} símbolo(s) en el mercado…`];
     const foundOpt: Ranked[] = [];
     const foundEq: EquityHit[] = [];
+    const spark: Record<string, SparkPoint[]> = {};
     const step = isOptions ? 3 : 5;
 
     for (let i = 0; i < pool.length; i += step) {
@@ -221,6 +235,7 @@ function Home() {
           foundOpt.push(...batch.hits);
           skipped.push(...batch.omitted);
           lines.push(...batch.log);
+          Object.assign(spark, batch.minis);
           setHits([...foundOpt].sort((a, b) => b.score - a.score || b.vol - a.vol));
         } else {
           const batch = await scanEquities({ data: { symbols: chunk } });
@@ -228,8 +243,10 @@ function Home() {
           foundEq.push(...batch.hits);
           skipped.push(...batch.omitted);
           lines.push(...batch.log);
+          Object.assign(spark, batch.minis);
           setEqHits([...foundEq].sort((a, b) => b.score - a.score));
         }
+        setMinis({ ...spark });
         setOmitted([...skipped]);
         setScanLog([...lines]);
       } catch {
@@ -260,7 +277,7 @@ function Home() {
     if (activeSymbol) window.localStorage.setItem(`pulso-note-${activeSymbol}`, value);
   }
 
-  const resultCount = isOptions ? hits.length : eqHits.length;
+  const resultCount = isOptions ? visibleHits.length : eqHits.length;
 
   return (
     <Shell version={APP_VERSION} mode={mode} onMode={setMode}>
@@ -353,10 +370,10 @@ function Home() {
                   setDteMin(Math.max(1, n));
                   setDteMax(Math.max(n, n));
                 }}
-                className="mt-1.5 h-8 w-full border border-dashed border-accent/50 text-[11px] text-accent"
+                className="mt-2 flex h-11 w-full flex-col items-center justify-center border border-accent bg-accent/15 text-[13px] font-semibold tracking-wide text-accent hover:bg-accent/25"
               >
                 Próximo viernes
-                <span className="mt-0.5 block text-[9px] text-muted">
+                <span className="mt-0.5 text-[10px] font-normal text-fg/80">
                   {friday.toLocaleDateString("es-US", { weekday: "short", day: "numeric", month: "short" })} · {dte(iso(friday))} días
                 </span>
               </button>
@@ -551,8 +568,8 @@ function Home() {
                 {scanLog[scanLog.length - 1]}
               </p>
               <ul className="mt-1 hidden max-h-28 space-y-0.5 overflow-y-auto font-mono text-[10px] text-muted lg:block">
-                {scanLog.slice(-12).map((line) => (
-                  <li key={line}>{line}</li>
+                {scanLog.slice(-12).map((line, i) => (
+                  <li key={`${i}-${line}`}>{line}</li>
                 ))}
               </ul>
             </div>
@@ -564,12 +581,19 @@ function Home() {
             </div>
           ) : null}
 
-          {isOptions && hits.length > 0 && (
+          {isOptions && hits.length > 0 && visibleHits.length === 0 && !scanning ? (
+            <div className="border border-wait/40 bg-wait/10 p-2.5 text-[11px] text-wait">
+              Hay {hits.length} contrato(s) del último barrido, pero ninguno entra en ${budget}. Sube el presupuesto o busca de nuevo.
+            </div>
+          ) : null}
+
+          {isOptions && visibleHits.length > 0 && (
             <div className="overflow-x-auto border border-line bg-surface">
               <table className="w-full text-[11px]">
                 <thead>
                   <tr className="text-left text-[9px] tracking-[0.12em] text-subtle uppercase">
                     <th className="px-2 py-1.5">Símbolo</th>
+                    <th className="px-2 py-1.5">Gráfico</th>
                     <th className="hidden px-2 py-1.5 sm:table-cell">Señal</th>
                     <th className="px-2 py-1.5">Técnico</th>
                     <th className="px-2 py-1.5">Contrato</th>
@@ -580,14 +604,15 @@ function Home() {
                   </tr>
                 </thead>
                 <tbody>
-                  {hits.slice(0, 14).map((c) => {
-                    const active = picked?.s === c.s && picked.t === c.t && picked.k === c.k;
-                    const spot = analysis?.price && picked?.s === c.s ? analysis.price : c.px;
-                    const rowEst = estimatePayoff(c, spot, budget, { dte: days });
+                  {visibleHits.slice(0, 14).map((c) => {
+                    const active =
+                      picked?.s === c.s && picked.t === c.t && picked.k === c.k && picked.exp === c.exp;
+                    const rowDays = c.exp ? Math.max(1, dte(c.exp)) : days;
+                    const rowEst = estimatePayoff(c, c.px, budget, { dte: rowDays });
                     const rowAct = actionFor(rowEst, picked?.s === c.s ? analysis : null, c);
                     return (
                       <tr
-                        key={`${c.s}-${c.t}-${c.k}`}
+                        key={`${c.s}-${c.t}-${c.k}-${c.exp ?? ""}`}
                         className={cn(
                           "cursor-pointer border-t border-line",
                           active ? "bg-raised" : "hover:bg-raised/70",
@@ -602,6 +627,9 @@ function Home() {
                             )}
                           </p>
                           <p className="text-[10px] text-muted">{formatMoney(c.px)}</p>
+                        </td>
+                        <td className="px-1 py-1">
+                          <MiniChart points={minis[c.s] ?? []} up={c.trend !== "down"} />
                         </td>
                         <td className="hidden px-2 py-1.5 sm:table-cell">
                           <span className={c.t === "call" ? "text-up" : "text-down"}>
@@ -618,7 +646,7 @@ function Home() {
                         </td>
                         <td className="px-2 py-1.5 font-mono">{formatMoney(c.debit)}</td>
                         <td className="hidden px-2 py-1.5 font-mono sm:table-cell">{formatMoney(c.spread)}</td>
-                        <td className="px-2 py-1.5 font-mono">{c.exp ? dte(c.exp) : days}</td>
+                        <td className="px-2 py-1.5 font-mono">{c.exp ? dte(c.exp) : rowDays}</td>
                         <td className="hidden px-2 py-1.5 sm:table-cell">
                           <span
                             className={cn(
@@ -636,6 +664,9 @@ function Home() {
                   })}
                 </tbody>
               </table>
+              <p className="border-t border-line px-2 py-1 text-[9px] text-subtle">
+                Mini gráfica: línea = precio · sombra azul = Bollinger · punteado = media 20
+              </p>
             </div>
           )}
 
@@ -645,6 +676,7 @@ function Home() {
                 <thead>
                   <tr className="text-left text-[9px] tracking-[0.12em] text-subtle uppercase">
                     <th className="px-2 py-1.5">Símbolo</th>
+                    <th className="px-2 py-1.5">Gráfico</th>
                     <th className="px-2 py-1.5">Precio</th>
                     <th className="px-2 py-1.5">Cambio</th>
                     <th className="px-2 py-1.5">Score</th>
@@ -668,6 +700,9 @@ function Home() {
                         <td className="px-2 py-1.5">
                           <p className="font-medium">{row.s}</p>
                           <p className="max-w-32 truncate text-[10px] text-muted">{row.name}</p>
+                        </td>
+                        <td className="px-1 py-1">
+                          <MiniChart points={minis[row.s] ?? []} up={row.changePct >= 0} />
                         </td>
                         <td className="px-2 py-1.5 font-mono">{formatMoney(row.px)}</td>
                         <td className={cn("px-2 py-1.5 font-mono", row.changePct >= 0 ? "text-up" : "text-down")}>

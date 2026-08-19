@@ -24,7 +24,7 @@ export function Shell({
       <header className="border-b border-line bg-surface">
         <div className="flex items-center justify-between gap-2 px-2 py-1.5 sm:px-3">
           <BrandLockup version={version} />
-          {mode && onMode && <ModeSwitch mode={mode} onChange={onMode} />}
+          {mode && onMode && <ModeSwitch mode={mode} onChange={onMode} className="hidden sm:flex" />}
           <div className="flex shrink-0 items-center gap-2 text-sm">
             {isPending ? (
               <div className="h-7 w-12 bg-raised" />
@@ -45,6 +45,11 @@ export function Shell({
             )}
           </div>
         </div>
+        {mode && onMode && (
+          <div className="border-t border-line px-2 py-1 sm:hidden">
+            <ModeSwitch mode={mode} onChange={onMode} className="w-full" />
+          </div>
+        )}
       </header>
       <MarketStrip />
       {children}
