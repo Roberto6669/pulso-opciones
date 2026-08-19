@@ -30,29 +30,34 @@ export type Ranked = Contract & {
 export const SCAN_SYMBOLS = [
   "SPY",
   "QQQ",
-  "IWM",
+  "DIA",
   "AAPL",
   "MSFT",
   "NVDA",
   "AMZN",
   "META",
-  "TSLA",
-  "AMD",
   "GOOGL",
-  "NFLX",
+  "TSLA",
   "AVGO",
-  "PLTR",
-  "SMCI",
-  "JPM",
-  "XOM",
+  "AMD",
+  "NFLX",
   "ORCL",
+  "JPM",
+  "BAC",
+  "XOM",
+  "UNH",
+  "LLY",
+  "V",
+  "MA",
+  "WMT",
+  "HD",
+  "COST",
+  "KO",
+  "PEP",
+  "DIS",
   "CRM",
-  "UBER",
-  "COIN",
-  "SOFI",
-  "F",
-  "BA",
   "INTC",
+  "BA",
 ];
 
 /** Respaldo si Yahoo no entrega cadena. */
@@ -158,7 +163,9 @@ export function scoreContract(
   const dir = aligned ? 18 : extras.kind === "esperar" ? 7 : 3;
   const tech = Math.round(Math.max(0, Math.min(extras.techScore ?? 50, 100)) * 0.34);
   const penalty = spreadPct > 0.22 || (c.vol < 50 && extras.source === "live") ? 12 : 0;
-  const score = Math.max(0, Math.min(100, liq + tech + dir - penalty));
+  const dist = Math.abs(c.k - c.px) / (c.px || 1);
+  const near = Math.round(Math.max(0, 14 - dist * 90));
+  const score = Math.max(0, Math.min(100, liq + tech + dir + near - penalty));
   const row: Ranked = {
     ...c,
     mid,

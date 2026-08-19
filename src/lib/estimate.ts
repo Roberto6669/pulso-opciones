@@ -1,4 +1,5 @@
 import type { Indicators } from "./analysis";
+import { maxOptionContracts, optionOpenFee, optionRoundTripFee } from "./fees";
 import type { Ranked } from "./scan";
 
 export type Scenario = {
@@ -25,6 +26,8 @@ export type Estimate = {
   capital: number;
   debitEach: number;
   maxLoss: number;
+  feesOpen: number;
+  feesRound: number;
   breakeven: number;
   hv: number;
   expectedMovePct: number;
@@ -66,7 +69,7 @@ export function nCdf(x: number) {
   return 0.5 * (1 + sign * y);
 }
 
-function bsPrice(S: number, K: number, T: number, sigma: number, side: "call" | "put") {
+export function bsPrice(S: number, K: number, T: number, sigma: number, side: "call" | "put") {
   if (T <= 1 / 365 || sigma <= 0) return intrinsic(side, K, S);
   const v = sigma * Math.sqrt(T);
   const d1 = (Math.log(S / K) + 0.5 * sigma * sigma * T) / v;
@@ -121,8 +124,11 @@ export function estimatePayoff(
     bands?: { upper: number | null; lower: number | null };
   },
 ): Estimate {
-  const n = Math.max(1, Math.floor(budget / contract.debit));
+  const n = maxOptionContracts(budget, contract.debit);
   const capital = n * contract.debit;
+  const feesOpen = optionOpenFee(n);
+  const feesRound = optionRoundTripFee(n);
+  const feeEach = n > 0 ? feesRound / n / 100 : 0;
   const dte = Math.max(opts?.dte ?? 5, 0);
   const T = Math.max(dte, 1) / 365;
   const closes = opts?.closes?.filter((c) => c > 0) ?? [];
@@ -147,26 +153,26 @@ export function estimatePayoff(
   }
 
   const breakeven =
-    contract.t === "call" ? liveK + contract.mid : liveK - contract.mid;
+    contract.t === "call" ? liveK + contract.mid + feeEach : liveK - contract.mid - feeEach;
   const expectedSpot = spot * Math.exp(mu * T);
   const expectedMovePct = (Math.exp(sigma * Math.sqrt(T)) - 1) * 100;
-  const zBe = Math.log(breakeven / spot);
+  const zBe = Math.log(Math.max(breakeven, 0.01) / spot);
   const pProfit =
     contract.t === "call"
       ? 1 - nCdf((zBe - (mu - 0.5 * sigma * sigma) * T) / (sigma * Math.sqrt(T)))
       : nCdf((zBe - (mu - 0.5 * sigma * sigma) * T) / (sigma * Math.sqrt(T)));
 
   const fair = bsPrice(spot, liveK, T, sigma, contract.t);
-  const expectedPnl = (fair - contract.mid) * 100 * n;
+  const expectedPnl = (fair - contract.mid) * 100 * n - feesRound;
   const expectedPnlPct = capital ? (expectedPnl / capital) * 100 : 0;
-  const targetPnl = (intrinsic(contract.t, liveK, expectedSpot) - contract.mid) * 100 * n;
+  const targetPnl = (intrinsic(contract.t, liveK, expectedSpot) - contract.mid) * 100 * n - feesOpen;
 
   const atSigma = (z: number) =>
     spot * Math.exp((mu - 0.5 * sigma * sigma) * T + z * sigma * Math.sqrt(T));
 
   const pack = (id: string, label: string, at: number): Scenario => {
     const value = intrinsic(contract.t, liveK, at);
-    const pnl = (value - contract.mid) * 100 * n;
+    const pnl = (value - contract.mid) * 100 * n - feesOpen;
     return {
       id,
       label,
@@ -231,14 +237,16 @@ export function estimatePayoff(
   const payoff = Array.from({ length: 25 }, (_, i) => {
     const at = lo + ((hi - lo) * i) / 24;
     const value = intrinsic(contract.t, liveK, at);
-    return { spot: at, pnl: (value - contract.mid) * 100 * n };
+    return { spot: at, pnl: (value - contract.mid) * 100 * n - feesOpen };
   });
 
   return {
     contracts: n,
     capital,
     debitEach: contract.debit,
-    maxLoss: capital,
+    maxLoss: capital + feesOpen,
+    feesOpen,
+    feesRound,
     breakeven,
     hv,
     expectedMovePct,

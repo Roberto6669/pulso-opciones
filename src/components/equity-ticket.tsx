@@ -28,6 +28,7 @@ export function EquityTicket({
       </div>
       <div className="grid grid-cols-4 gap-px border-t border-line bg-line">
         <Stat k="Capital" v={formatMoney(estimate.capital)} />
+        <Stat k="IBKR" v={formatMoney(estimate.fees)} />
         <Stat k="Acciones" v={String(estimate.shares)} />
         <Stat
           k="VE"

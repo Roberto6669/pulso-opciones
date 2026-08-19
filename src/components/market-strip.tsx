@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { MiniChart } from "@/components/mini-chart";
 import { fetchIndices, type IndexQuote } from "@/lib/market.fns";
 import { cn, formatMoney, formatPct } from "@/lib/utils";
 
@@ -28,14 +29,17 @@ export function MarketStrip() {
     <div className="border-b border-line bg-surface">
       <div className="flex overflow-x-auto divide-x divide-line lg:grid lg:grid-cols-5">
         {(rows.length ? rows : fallback).map((row) => (
-          <div key={row.label} className="min-w-[28%] shrink-0 px-2 py-1 lg:min-w-0">
-            <p className="text-[9px] tracking-[0.12em] text-subtle uppercase">{row.label}</p>
-            <p className="font-mono text-[11px] tabular-nums">
-              {row.price ? formatMoney(row.price) : "—"}{" "}
-              <span className={cn("text-xs", row.changePct >= 0 ? "text-up" : "text-down")}>
-                {row.price ? formatPct(row.changePct) : ""}
-              </span>
-            </p>
+          <div key={row.label} className="flex min-w-[42%] items-center justify-between gap-2 px-2 py-1 lg:min-w-0">
+            <div className="min-w-0">
+              <p className="text-[9px] tracking-[0.12em] text-subtle uppercase">{row.label}</p>
+              <p className="font-mono text-[11px] tabular-nums">
+                {row.price ? formatMoney(row.price) : "—"}{" "}
+                <span className={cn("text-xs", row.changePct >= 0 ? "text-up" : "text-down")}>
+                  {row.price ? formatPct(row.changePct) : ""}
+                </span>
+              </p>
+            </div>
+            <MiniChart points={row.spark ?? []} up={row.changePct >= 0} />
           </div>
         ))}
       </div>
@@ -55,9 +59,9 @@ export function MarketStrip() {
 }
 
 const fallback: IndexQuote[] = [
-  { symbol: "SPY", label: "S&P 500", price: 0, changePct: 0 },
-  { symbol: "DIA", label: "Dow", price: 0, changePct: 0 },
-  { symbol: "QQQ", label: "Nasdaq", price: 0, changePct: 0 },
-  { symbol: "IWM", label: "Russell", price: 0, changePct: 0 },
-  { symbol: "^VIX", label: "VIX", price: 0, changePct: 0 },
+  { symbol: "SPY", label: "S&P 500", price: 0, changePct: 0, spark: [] },
+  { symbol: "DIA", label: "Dow", price: 0, changePct: 0, spark: [] },
+  { symbol: "QQQ", label: "Nasdaq", price: 0, changePct: 0, spark: [] },
+  { symbol: "IWM", label: "Russell", price: 0, changePct: 0, spark: [] },
+  { symbol: "^VIX", label: "VIX", price: 0, changePct: 0, spark: [] },
 ];

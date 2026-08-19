@@ -8,7 +8,7 @@ import {
   searchSymbols,
   type LiveOption,
 } from "./yahoo.server";
-import { scoreContract, type Ranked, type Side, type Trend } from "./scan";
+import { dte, scoreContract, type Ranked, type Side, type Trend } from "./scan";
 import { histVol } from "./estimate";
 import type { EquityHit } from "./equity";
 
@@ -69,31 +69,34 @@ export type IndexQuote = {
   label: string;
   price: number;
   changePct: number;
+  spark: SparkPoint[];
 };
 
 export const fetchIndices = createServerFn({ method: "POST" })
   .validator(() => true)
   .handler(async () => {
-    const rows: IndexQuote[] = [];
-    for (const item of INDEX_SYMBOLS) {
-      try {
-        const bundle = await fetchChart(item.symbol, "5d");
-        rows.push({
-          symbol: item.symbol,
-          label: item.label,
-          price: bundle.meta.price,
-          changePct: bundle.meta.changePct,
-        });
-      } catch {
-        rows.push({
-          symbol: item.symbol,
-          label: item.label,
-          price: 0,
-          changePct: 0,
-        });
-      }
-    }
-    return rows;
+    return Promise.all(
+      INDEX_SYMBOLS.map(async (item) => {
+        try {
+          const bundle = await fetchChart(item.symbol, "3mo");
+          return {
+            symbol: item.symbol,
+            label: item.label,
+            price: bundle.meta.price,
+            changePct: bundle.meta.changePct,
+            spark: sparkline(bundle.bars, 22),
+          };
+        } catch {
+          return {
+            symbol: item.symbol,
+            label: item.label,
+            price: 0,
+            changePct: 0,
+            spark: [] as SparkPoint[],
+          };
+        }
+      }),
+    );
   });
 
 export type RadarRow = {
@@ -208,11 +211,11 @@ function trendFrom(kind: SignalKind, changePct: number): Trend {
 }
 
 function pickLegs(legs: LiveOption[], budget: number, spot: number) {
-  const maxDist = budget <= 50 ? 0.22 : budget <= 100 ? 0.16 : 0.12;
-  return legs
+  const maxDist = budget <= 50 ? 0.28 : budget <= 100 ? 0.2 : 0.14;
+  const ranked = legs
     .map((leg) => {
       const mid = (leg.bid + leg.ask) / 2 || leg.last;
-      const spread = Math.max(0, leg.ask - leg.bid);
+      const spread = Math.max(0, (leg.ask || mid) - (leg.bid || 0));
       const spreadPct = mid > 0 ? spread / mid : 1;
       return {
         leg,
@@ -223,17 +226,14 @@ function pickLegs(legs: LiveOption[], budget: number, spot: number) {
         flow: leg.volume + leg.openInterest * 0.4,
       };
     })
-    .filter(
-      (row) =>
-        row.debit > 0 &&
-        row.debit <= budget &&
-        row.dist <= maxDist &&
-        row.spreadPct <= 0.25 &&
-        (row.leg.volume > 0 || row.leg.openInterest > 10),
-    )
-    .sort((a, b) => b.flow - a.flow - (a.dist - b.dist) * 4000)
-    .slice(0, 3)
-    .map((row) => row.leg);
+    .filter((row) => row.debit > 0.5 && row.debit + 1 <= budget);
+  const tight = ranked.filter(
+    (row) => row.dist <= maxDist && (row.spreadPct <= 0.4 || row.mid < 0.4) && (row.leg.volume > 0 || row.leg.openInterest > 1 || row.mid > 0),
+  );
+  const pool = (tight.length ? tight : ranked.filter((row) => row.dist <= maxDist + 0.1)).sort(
+    (a, b) => a.dist - b.dist || b.flow - a.flow,
+  );
+  return pool.slice(0, 4).map((row) => row.leg);
 }
 
 export const scanBatch = createServerFn({ method: "POST" })
@@ -243,6 +243,7 @@ export const scanBatch = createServerFn({ method: "POST" })
     budget: number;
     dteMin: number;
     dteMax: number;
+    largeCap?: boolean;
   }) => ({
     symbols: (input.symbols ?? [])
       .map((s) =>
@@ -257,6 +258,7 @@ export const scanBatch = createServerFn({ method: "POST" })
     budget: Math.max(10, Math.min(Number(input.budget) || 100, 5000)),
     dteMin: Math.max(1, Math.min(Number(input.dteMin) || 2, 90)),
     dteMax: Math.max(1, Math.min(Number(input.dteMax) || 7, 120)),
+    largeCap: Boolean(input.largeCap),
   }))
   .handler(async ({ data }): Promise<ScanBatch> => {
     const hits: Ranked[] = [];
@@ -271,6 +273,14 @@ export const scanBatch = createServerFn({ method: "POST" })
         const analysis = analyzeBundle(bundle);
         analyzed += 1;
         minis[symbol] = sparkline(bundle.bars);
+        const avgVol = analysis.indicators.volAvg20 ?? bundle.bars.at(-1)?.v ?? 0;
+        if (data.largeCap && avgVol > 0 && avgVol < 1_500_000) {
+          omitted.push(symbol);
+          log.push(
+            `${symbol} · omitido: volumen medio ${(avgVol / 1_000_000).toFixed(1)}M < 1.5M`,
+          );
+          return;
+        }
         const chain = await fetchOptionChain(symbol, data.dteMin, data.dteMax);
         const trend = trendFrom(analysis.verdict.kind, analysis.changePct);
         const legs = [
@@ -319,7 +329,12 @@ export const scanBatch = createServerFn({ method: "POST" })
     });
     await Promise.all(jobs);
 
-    hits.sort((a, b) => b.score - a.score || b.vol - a.vol);
+    hits.sort(
+      (a, b) =>
+        b.score - a.score ||
+        (a.exp && b.exp ? dte(a.exp) - dte(b.exp) : 0) ||
+        b.vol - a.vol,
+    );
     return { hits, analyzed, omitted, log, minis };
   });
 
@@ -331,7 +346,7 @@ export type EquityBatch = {
 };
 
 export const scanEquities = createServerFn({ method: "POST" })
-  .validator((input: { symbols: string[] }) => ({
+  .validator((input: { symbols: string[]; largeCap?: boolean }) => ({
     symbols: (input.symbols ?? [])
       .map((s) =>
         String(s)
@@ -341,6 +356,7 @@ export const scanEquities = createServerFn({ method: "POST" })
       )
       .filter(Boolean)
       .slice(0, 8),
+    largeCap: Boolean(input.largeCap),
   }))
   .handler(async ({ data }): Promise<EquityBatch> => {
     const hits: EquityHit[] = [];
@@ -354,6 +370,14 @@ export const scanEquities = createServerFn({ method: "POST" })
           const bundle = await fetchChart(symbol, "3mo");
           const analysis = analyzeBundle(bundle);
           const closes = bundle.bars.map((b) => b.c).filter((c) => c > 0);
+          const avgVol = analysis.indicators.volAvg20 ?? bundle.bars.at(-1)?.v ?? 0;
+          if (data.largeCap && avgVol > 0 && avgVol < 1_500_000) {
+            omitted.push(symbol);
+            log.push(
+              `${symbol} · omitido: volumen medio ${(avgVol / 1_000_000).toFixed(1)}M < 5M`,
+            );
+            return;
+          }
           minis[symbol] = sparkline(bundle.bars);
           hits.push({
             s: analysis.symbol,

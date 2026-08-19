@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { PriceChart } from "@/components/price-chart";
 import { EstimatePanel } from "@/components/estimate-panel";
 import { MiniChart } from "@/components/mini-chart";
+import { PlainWhy } from "@/components/plain-why";
 import { OptionTicket } from "@/components/option-ticket";
 import { EquityTicket } from "@/components/equity-ticket";
 import { ScoreBar, MiniScore } from "@/components/score-bar";
@@ -13,7 +14,7 @@ import { APP_VERSION } from "@/components/brand";
 import { analyzeTicker, scanBatch, scanEquities, type PublicAnalysis } from "@/lib/market.fns";
 import type { SparkPoint } from "@/lib/analysis";
 import { estimatePayoff } from "@/lib/estimate";
-import { actionFor, confidenceLabel, dteRisk, setupTags, whyAppeared } from "@/lib/setup";
+import { actionFor, confidenceLabel, dteRisk, setupTags } from "@/lib/setup";
 import { cn, formatMoney, formatPct } from "@/lib/utils";
 import {
   ETF_SYMBOLS,
@@ -49,7 +50,7 @@ function Home() {
   const [budget, setBudget] = useState<(typeof BUDGETS)[number]>(100);
   const [symbols, setSymbols] = useState("");
   const [side, setSide] = useState<Side>("both");
-  const [dteMin, setDteMin] = useState(2);
+  const [dteMin, setDteMin] = useState(1);
   const [dteMax, setDteMax] = useState(7);
   const [exp, setExp] = useState(() => iso(nextFriday()));
   const [scanned, setScanned] = useState(false);
@@ -73,7 +74,8 @@ function Home() {
   const isOptions = mode === "options";
 
   const days = picked?.exp ? dte(picked.exp) : dte(exp);
-  const risk = dteRisk(days);
+  const filterDays = Math.max(dteMin, dteMax);
+  const risk = dteRisk(filterDays);
   const friday = nextFriday();
   const visibleHits = useMemo(
     () => hits.filter((h) => h.debit <= budget + 0.009),
@@ -176,9 +178,8 @@ function Home() {
     });
   }, [analysis, budget, days, picked]);
 
-  const action = estimate ? actionFor(estimate, analysis, picked ?? undefined) : null;
+  const action = estimate ? actionFor(estimate, analysis, picked ?? undefined, days) : null;
   const tags = picked ? setupTags(analysis, picked) : [];
-  const reasons = picked ? whyAppeared(picked, analysis) : [];
   const eqEst = useMemo(() => {
     if (!pickedEq) return null;
     return estimateEquity(pickedEq, budget, days, analysis?.series.map((p) => p.c));
@@ -229,6 +230,7 @@ function Home() {
               budget,
               dteMin: Math.min(dteMin, dteMax),
               dteMax: Math.max(dteMin, dteMax),
+              largeCap: wide,
             },
           });
           if (id !== scanId.current) return;
@@ -238,7 +240,7 @@ function Home() {
           Object.assign(spark, batch.minis);
           setHits([...foundOpt].sort((a, b) => b.score - a.score || b.vol - a.vol));
         } else {
-          const batch = await scanEquities({ data: { symbols: chunk } });
+          const batch = await scanEquities({ data: { symbols: chunk, largeCap: wide } });
           if (id !== scanId.current) return;
           foundEq.push(...batch.hits);
           skipped.push(...batch.omitted);
@@ -320,7 +322,39 @@ function Home() {
                 </button>
               ))}
             </div>
+            <p className="mt-1.5 text-[10px] text-muted">
+              Comisión IBKR: $0.65/contrato + ~$0.03 bolsa, mín. $1. Ida y vuelta en las ganancias.
+            </p>
 
+            <div className="mt-2 grid grid-cols-3 gap-1">
+              {(
+                [
+                  [1, 7, "≤ 7 días"],
+                  [7, 14, "14 días"],
+                  [21, 45, "21–45"],
+                ] as const
+              ).map(([min, max, label]) => {
+                const on =
+                  label === "≤ 7 días" ? dteMax <= 7 : dteMin === min && dteMax === max;
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => {
+                      setDteMin(min);
+                      setDteMax(max);
+                      setExp(min === 1 ? iso(nextFriday()) : addDays(Math.round((min + max) / 2)));
+                    }}
+                    className={cn(
+                      "h-7 border text-[10px]",
+                      on ? "border-transparent bg-accent text-accent-fg" : "border-line text-muted hover:text-fg",
+                    )}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
             <div className="mt-2 grid grid-cols-2 gap-1.5">
               <div>
                 <label className="mb-1 block text-[9px] tracking-[0.12em] text-subtle uppercase">
@@ -349,26 +383,14 @@ function Home() {
                 />
               </div>
             </div>
-            <button
-              type="button"
-              className="mt-2 w-full text-left text-[10px] text-accent hover:underline"
-              onClick={() => {
-                setDteMin(21);
-                setDteMax(45);
-                setExp(addDays(28));
-              }}
-            >
-              Usar rango balanceado 21–45 días
-            </button>
             {isOptions && (
               <button
                 type="button"
                 onClick={() => {
                   const f = nextFriday();
                   setExp(iso(f));
-                  const n = dte(iso(f));
-                  setDteMin(Math.max(1, n));
-                  setDteMax(Math.max(n, n));
+                  setDteMin(1);
+                  setDteMax(Math.max(1, dte(iso(f))));
                 }}
                 className="mt-2 flex h-11 w-full flex-col items-center justify-center border border-accent bg-accent/15 text-[13px] font-semibold tracking-wide text-accent hover:bg-accent/25"
               >
@@ -388,15 +410,15 @@ function Home() {
                     risk.tone === "wait" && "bg-wait",
                     risk.tone === "down" && "bg-down",
                   )}
-                  style={{ width: `${Math.min(100, (days / 60) * 100)}%` }}
+                  style={{ width: `${Math.min(100, (filterDays / 60) * 100)}%` }}
                 />
               </div>
               <p className="mt-1 text-[10px] text-muted">
-                {days} {isOptions ? "DTE" : "días"} · {risk.label}
+                Filtro {dteMin}–{dteMax} {isOptions ? "DTE" : "días"} · {risk.label}
               </p>
             </div>
 
-            {isOptions && days <= 7 && (
+            {isOptions && dteMax <= 7 && (
               <p className="mt-1.5 text-[10px] leading-snug text-down">
                 1–7 días: muy agresivo. El contrato pierde valor por tiempo con mucha rapidez.
               </p>
@@ -411,7 +433,9 @@ function Home() {
               {scanning
                 ? `Buscando ${progress.done}/${progress.total}…`
                 : isOptions
-                  ? "Buscar las mejores ahora"
+                  ? dteMax <= 7
+                    ? "Buscar weeklies (≤7 días)"
+                    : "Buscar las mejores ahora"
                   : mode === "etf"
                     ? "Buscar ETFs"
                     : "Buscar acciones"}
@@ -428,8 +452,9 @@ function Home() {
               </div>
             )}
             <p className="mt-1.5 text-[10px] text-subtle">
-              Campo vacío: recorre {universe().length} símbolos
-              {isOptions ? " y sus cadenas de opciones." : " del universo seleccionado."}
+              {isOptions
+                ? "Vacío: large cap + alto volumen (millones de acciones) y weeklies ≤7 DTE."
+                : `Vacío: ${universe().length} large caps / ETFs líquidos.`}
             </p>
           </section>
 
@@ -438,7 +463,11 @@ function Home() {
             <textarea
               value={symbols}
               onChange={(e) => setSymbols(e.target.value)}
-              placeholder={mode === "etf" ? "SPY, QQQ, XLK…" : "AAPL, NVDA, MSFT…"}
+              placeholder={
+                mode === "etf"
+                  ? "SPY, QQQ, XLK…"
+                  : "AAPL, NVDA, MSFT… vacío = large cap, +5M acciones/día"
+              }
               rows={3}
               className="w-full border border-line bg-raised px-2 py-1.5 text-xs outline-none focus:border-accent/50"
             />
@@ -505,15 +534,20 @@ function Home() {
             </div>
           )}
 
-          <div className="hidden lg:block">
-            <h1 className="text-sm font-semibold">
-              {isOptions ? "Pulso Options Analyzer" : mode === "etf" ? "Pulso ETF Scanner" : "Pulso Stock Scanner"}
-            </h1>
-            <p className="text-[11px] text-muted">
-              {isOptions
-                ? "Setups técnicos y contratos filtrados por liquidez, costo y riesgo."
-                : "Escaneo técnico del subyacente: tendencia, RSI, bandas y movimiento esperado."}
+          <div className="relative hidden overflow-hidden lg:block">
+            <p className="pointer-events-none absolute inset-y-0 right-0 z-0 flex items-center text-[3.25rem] font-semibold leading-none tracking-[0.12em] text-fg/[0.15] uppercase">
+              {isOptions ? "OPCIONES" : mode === "etf" ? "ETF" : "ACCIONES"}
             </p>
+            <div className="relative z-10">
+              <h1 className="text-sm font-semibold">
+                {isOptions ? "Pulso Options Analyzer" : mode === "etf" ? "Pulso ETF Scanner" : "Pulso Stock Scanner"}
+              </h1>
+              <p className="text-[11px] text-muted">
+                {isOptions
+                  ? "Setups técnicos y contratos filtrados por liquidez, costo y riesgo."
+                  : "Escaneo técnico del subyacente: tendencia, RSI, bandas y movimiento esperado."}
+              </p>
+            </div>
           </div>
 
           {(scanned || scanning) && (
@@ -536,14 +570,15 @@ function Home() {
                 </>
               )}
               <span className="text-subtle">
-                {auto ? "Universo líquido" : "Filtro de símbolos"}
+                {auto ? "Large cap · +1.5M vol." : "Filtro de símbolos"}
               </span>
             </div>
           )}
 
-          {isOptions && days <= 7 && scanned && (
-            <div className="hidden border border-wait/40 bg-wait/10 px-2.5 py-1.5 text-[11px] text-wait lg:block">
-              Atención: DTE {days}. Rango corto; puede no haber vencimientos y el deterioro temporal es rápido.
+          {isOptions && dteMax <= 7 && scanned && (
+            <div className="border border-wait/40 bg-wait/10 px-2.5 py-1.5 text-[11px] text-wait">
+              Comprar opciones de pocos días con poco dinero casi nunca es un “sí”. SÍ = el salto cabe en un
+              día normal. NO = queda demasiado lejos (lotería). Prueba $100 o 14 días si quieres más chance.
             </div>
           )}
 
@@ -609,7 +644,7 @@ function Home() {
                       picked?.s === c.s && picked.t === c.t && picked.k === c.k && picked.exp === c.exp;
                     const rowDays = c.exp ? Math.max(1, dte(c.exp)) : days;
                     const rowEst = estimatePayoff(c, c.px, budget, { dte: rowDays });
-                    const rowAct = actionFor(rowEst, picked?.s === c.s ? analysis : null, c);
+                    const rowAct = actionFor(rowEst, picked?.s === c.s ? analysis : null, c, rowDays);
                     return (
                       <tr
                         key={`${c.s}-${c.t}-${c.k}-${c.exp ?? ""}`}
@@ -793,23 +828,13 @@ function Home() {
                   )}
                 </div>
                 <div className="border border-line bg-surface p-2.5">
-                  <p className="text-[9px] tracking-[0.14em] text-subtle uppercase">Recomendación actual</p>
-                  <h3 className="mt-0.5 text-sm font-semibold">
-                    {action?.label === "ANALIZAR"
-                      ? `Considerar ${picked.t.toUpperCase()}S`
-                      : action?.label}
-                  </h3>
-                  <p className="mt-2 text-[11px] text-muted">
-                    {analysis?.verdict.headline ?? action?.detail} {action?.detail}
-                  </p>
-                  <p className="mt-2 text-[9px] tracking-[0.14em] text-subtle uppercase">Por qué apareció</p>
-                  <ul className="mt-1 space-y-1 text-[11px] text-muted">
-                    {reasons.map((item) => (
-                      <li key={item} className="border-l border-line pl-1.5">
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
+                  <PlainWhy
+                    contract={picked}
+                    estimate={estimate}
+                    analysis={analysis}
+                    days={days}
+                    action={action ?? { label: "—", tone: "wait", detail: "" }}
+                  />
                 </div>
               </section>
 
@@ -911,6 +936,8 @@ function Home() {
                 {isOptions && estimate && (
                   <>
                     <Row k="Prima pagada" v={formatMoney(estimate.capital)} />
+                    <Row k="Comisión IBKR" v={formatMoney(estimate.feesRound)} />
+                    <Row k="Máx. a perder" v={formatMoney(estimate.maxLoss)} />
                     <Row k="Teórico BS" v={formatMoney(estimate.fair * 100 * estimate.contracts)} />
                     <Row
                       k="Si llega la tesis"
@@ -934,6 +961,7 @@ function Home() {
                 {!isOptions && eqEst && (
                   <>
                     <Row k="Capital" v={formatMoney(eqEst.capital)} />
+                    <Row k="Comisión IBKR" v={formatMoney(eqEst.fees)} />
                     <Row k="Acciones" v={String(eqEst.shares)} />
                     <Row
                       k="Valor esperado"

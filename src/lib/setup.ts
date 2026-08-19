@@ -28,35 +28,82 @@ export function setupTags(analysis: PublicAnalysis | null, contract: Ranked): Ta
   return tags.slice(0, 4);
 }
 
-export function actionFor(estimate: Estimate, analysis: PublicAnalysis | null, contract?: Ranked) {
+export function actionFor(
+  estimate: Estimate,
+  analysis: PublicAnalysis | null,
+  contract?: Ranked,
+  days?: number,
+) {
+  const dte = Math.max(days ?? 1, 1);
+  const spot = analysis?.price ?? contract?.px ?? 0;
+  const stockKind = analysis?.verdict.kind;
+  const stockGood = stockKind === "comprar" || (analysis?.verdict.score ?? 0) >= 65;
+  const stockLabel =
+    stockKind === "comprar" ? "BUENO" : stockKind === "vender" ? "EN CONTRA" : "NEUTRO";
+
   if (estimate.contracts < 1) {
-    return { label: "NO COMPRAR", tone: "down" as const, detail: "El presupuesto no cubre un contrato entero." };
-  }
-  if (estimate.pProfit < 0.16) {
     return {
-      label: "EVITAR",
+      label: "NO",
       tone: "down" as const,
-      detail: "Poca probabilidad de cruzar el break-even antes del vencimiento.",
+      stock: stockLabel,
+      detail: "El presupuesto no cubre un contrato entero.",
     };
   }
+
+  const need = estimate.breakeven - spot;
+  const needPct = spot ? (need / spot) * 100 : 0;
+  const gap =
+    contract?.t === "put"
+      ? `el precio debe caer a ${estimate.breakeven.toFixed(2)}`
+      : `el precio debe subir a ${estimate.breakeven.toFixed(2)}`;
+
+  const p = estimate.pProfit;
+  const move = Math.max(estimate.expectedMovePct, 0.15);
+  const needAbs = Math.abs(needPct);
+  const reachable = needAbs <= move * 1.15;
+  const stretch = needAbs > move * 2.1;
   const against =
     contract &&
-    ((contract.t === "call" && analysis?.verdict.kind === "vender") ||
-      (contract.t === "put" && analysis?.verdict.kind === "comprar"));
-  if (against) {
-    return { label: "VIGILAR", tone: "wait" as const, detail: "El técnico apunta al lado contrario." };
-  }
-  if (estimate.pProfit >= 0.3 && (estimate.targetPnl > 0 || estimate.expectedPnl > -estimate.capital * 0.15)) {
+    ((contract.t === "call" && stockKind === "vender") ||
+      (contract.t === "put" && stockKind === "comprar"));
+
+  if (stretch || p < 0.09) {
     return {
-      label: "ANALIZAR",
+      label: "NO",
+      tone: "down" as const,
+      stock: stockLabel,
+      detail: `Para ganar, ${gap} (${needAbs.toFixed(1)}%) en ${dte} día(s). Un día normal mueve ~${move.toFixed(1)}%. Queda demasiado lejos.`,
+    };
+  }
+  if (against) {
+    return {
+      label: "MIRAR",
+      tone: "wait" as const,
+      stock: stockLabel,
+      detail: "La acción va al lado contrario de este boleto.",
+    };
+  }
+  if ((p >= 0.2 || reachable) && stockGood && (estimate.targetPnl > -estimate.capital * 0.35 || p >= 0.28)) {
+    return {
+      label: "SÍ",
       tone: "up" as const,
-      detail: "Hay chance razonable de cruzar el BE y el técnico no lo contradice.",
+      stock: stockLabel,
+      detail: `El salto (${needAbs.toFixed(1)}%) entra en lo que suele moverse (~${move.toFixed(1)}%) y la acción va a favor.`,
+    };
+  }
+  if (p >= 0.12 || reachable) {
+    return {
+      label: "MIRAR",
+      tone: "wait" as const,
+      stock: stockLabel,
+      detail: `No es locura: faltan ${needAbs.toFixed(1)}% y el movimiento típico es ~${move.toFixed(1)}%. Tampoco es un sí claro.`,
     };
   }
   return {
-    label: "VIGILAR",
-    tone: "wait" as const,
-    detail: "No es un no, pero el promedio del modelo no es fuerte.",
+    label: "NO",
+    tone: "down" as const,
+    stock: stockLabel,
+    detail: `Faltan ${needAbs.toFixed(1)}% en ${dte} día(s). Demasiado para este boleto.`,
   };
 }
 

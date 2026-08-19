@@ -165,6 +165,34 @@ function stdev(values: number[], period: number): Array<number | null> {
   return out;
 }
 
+export type SparkPoint = {
+  c: number;
+  u: number | null;
+  m: number | null;
+  l: number | null;
+};
+
+export function sparkline(bars: Bar[], n = 36): SparkPoint[] {
+  const closes = bars.map((b) => b.c);
+  const mid = sma(closes, 20);
+  const sd = stdev(closes, 20);
+  const slice = bars.slice(-n);
+  const offset = Math.max(0, bars.length - slice.length);
+  return slice
+    .filter((b) => Number.isFinite(b.c))
+    .map((b, i) => {
+      const idx = offset + i;
+      const m = mid[idx] ?? null;
+      const s = sd[idx] ?? null;
+      return {
+        c: b.c,
+        m,
+        u: m != null && s != null ? m + 2 * s : null,
+        l: m != null && s != null ? m - 2 * s : null,
+      };
+    });
+}
+
 export function judge(price: number, bars: Bar[], ind: Indicators): Verdict {
   const reasons: Reason[] = [];
   let score = 50;

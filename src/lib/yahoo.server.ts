@@ -384,10 +384,20 @@ function pickExpiration(dates: number[], dteMin: number, dteMax: number) {
   const now = Date.now() / 1000;
   const scored = dates
     .map((unix) => ({ unix, days: (unix - now) / 86400 }))
-    .filter((row) => row.days >= -0.2);
-  if (!scored.length) return dates[0];
-  const inRange = scored.filter((row) => row.days >= dteMin - 0.4 && row.days <= dteMax + 0.6);
+    .filter((row) => row.days >= Math.max(0.75, dteMin - 0.4));
+  if (!scored.length) {
+    const future = dates
+      .map((unix) => ({ unix, days: (unix - now) / 86400 }))
+      .filter((row) => row.days >= 0.75)
+      .sort((a, b) => a.days - b.days);
+    return (future[0] ?? { unix: dates[0] }).unix;
+  }
+  const inRange = scored.filter((row) => row.days <= dteMax + 0.6);
   const pool = inRange.length ? inRange : scored;
+  if (dteMax <= 7) {
+    pool.sort((a, b) => a.days - b.days);
+    return pool[0].unix;
+  }
   const mid = (dteMin + dteMax) / 2;
   pool.sort((a, b) => Math.abs(a.days - mid) - Math.abs(b.days - mid));
   return pool[0].unix;
@@ -475,23 +485,29 @@ async function fetchNasdaqOptions(sym: string, dteMin: number, dteMax: number): 
     groups.set(current.iso, bucket);
   }
   if (!groups.size) throw new Error("Nasdaq cadena vacía");
-  const wanted = pickExpiration(
-    [...groups.values()].map((g) => g.unix),
-    dteMin,
-    dteMax,
-  );
-  const chosen = [...groups.values()].find((g) => g.unix === wanted) ?? [...groups.values()][0];
-  const trade = nasdaqNum((body.data?.lastTrade ?? "").match(/\$[0-9,.]+/)?.[0]);
   const now = Date.now() / 1000;
+  const minDays = Math.max(0.75, dteMin - 0.4);
+  const all = [...groups.values()]
+    .map((g) => ({ ...g, days: (g.unix - now) / 86400 }))
+    .filter((g) => g.days >= minDays)
+    .sort((a, b) => a.days - b.days);
+  const inWindow = all.filter((g) => g.days <= dteMax + 0.6);
+  const use = (inWindow.length ? inWindow : all).slice(0, 4);
+  if (!use.length) throw new Error("Sin vencimiento en ese rango");
+  const calls = use.flatMap((g) => g.calls);
+  const puts = use.flatMap((g) => g.puts);
+  if (calls.length + puts.length === 0) throw new Error("Nasdaq cadena vacía");
+  const chosen = use[0];
+  const trade = nasdaqNum((body.data?.lastTrade ?? "").match(/\$[0-9,.]+/)?.[0]);
   return {
     symbol: sym,
     name: sym,
     price: trade,
     expiration: unixToIso(chosen.unix),
     expirationUnix: chosen.unix,
-    dte: Math.max(0, Math.round((chosen.unix - now) / 86400)),
-    calls: chosen.calls,
-    puts: chosen.puts,
+    dte: Math.max(1, Math.round(chosen.days)),
+    calls,
+    puts,
   };
 }
 

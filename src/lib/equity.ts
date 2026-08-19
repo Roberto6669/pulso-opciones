@@ -1,5 +1,6 @@
 import type { SignalKind } from "./analysis";
 import { histDrift, histVol, nCdf } from "./estimate";
+import { stockFee } from "./fees";
 
 export type MarketMode = "options" | "stocks" | "etf";
 
@@ -28,6 +29,7 @@ export type EquityEstimate = {
   expectedMovePct: number;
   hv: number;
   pUp: number;
+  fees: number;
 };
 
 export const STOCK_SYMBOLS = [
@@ -52,21 +54,20 @@ export const STOCK_SYMBOLS = [
   "AMD",
   "CRM",
   "BAC",
+  "WMT",
   "KO",
   "PEP",
   "DIS",
   "INTC",
   "BA",
-  "UBER",
-  "PLTR",
-  "COIN",
-  "SMCI",
+  "WFC",
+  "CVX",
+  "ABBV",
 ];
 
 export const ETF_SYMBOLS = [
   "SPY",
   "QQQ",
-  "IWM",
   "DIA",
   "VOO",
   "VTI",
@@ -74,16 +75,12 @@ export const ETF_SYMBOLS = [
   "XLF",
   "XLE",
   "XLV",
+  "XLI",
   "SMH",
-  "SOXL",
-  "TQQQ",
   "GLD",
-  "SLV",
   "TLT",
-  "HYG",
   "EEM",
-  "ARKK",
-  "IYR",
+  "IWM",
 ];
 
 export function modeLabel(mode: MarketMode) {
@@ -101,11 +98,12 @@ export function estimateEquity(
   const px = hit.px > 0 ? hit.px : 1;
   const shares = Math.max(1, Math.floor(budget / px));
   const capital = shares * px;
+  const fees = stockFee(shares) * 2;
   const hv = hit.hv || histVol(closes.length ? closes : [px * 0.97, px]);
   const T = Math.max(dte, 1) / 365;
   const drift = histDrift(closes, hit.kind === "comprar");
   const expectedSpot = px * Math.exp(drift * T);
-  const expectedPnl = (expectedSpot - px) * shares;
+  const expectedPnl = (expectedSpot - px) * shares - fees;
   const expectedMovePct = (Math.exp(hv * Math.sqrt(T)) - 1) * 100;
   const vol = hv * Math.sqrt(T) || 1e-9;
   const pUp = 1 - nCdf((0 - (drift - 0.5 * hv * hv) * T) / vol);
@@ -118,5 +116,6 @@ export function estimateEquity(
     expectedMovePct,
     hv,
     pUp: Math.max(0.05, Math.min(0.95, pUp)),
+    fees,
   };
 }

@@ -46,6 +46,7 @@ export function OptionTicket({
 
       <div className="grid grid-cols-4 gap-px border-t border-line bg-line">
         <Stat k="Prima" v={formatMoney(estimate.capital)} />
+        <Stat k="IBKR" v={formatMoney(estimate.feesRound)} />
         <Stat
           k="Si tesis"
           v={`${estimate.targetPnl >= 0 ? "+" : ""}${formatMoney(estimate.targetPnl)}`}

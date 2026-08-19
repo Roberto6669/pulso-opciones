@@ -42,19 +42,19 @@ export function EstimatePanel({
       <div className="grid gap-px bg-line sm:grid-cols-3">
         <FormulaBox
           label="1. Invertiste"
-          value={formatMoney(estimate.capital)}
-          hint={`${estimate.contracts} contrato(s) · esto es lo máximo que puedes perder`}
+          value={formatMoney(estimate.capital + estimate.feesOpen)}
+          hint={`${estimate.contracts} contrato(s) + comisión IBKR ${formatMoney(estimate.feesOpen)} · máx. pérdida ${formatMoney(estimate.maxLoss)}`}
         />
         <FormulaBox
           label="2. Si llega a la tesis"
           value={`${objetivoPnl >= 0 ? "+" : ""}${formatMoney(objetivoPnl)}`}
-          hint={`Precio a ${formatMoney(story.target)} · te quedarían ${formatMoney(objetivoTotal)}`}
+          hint={`Precio a ${formatMoney(story.target)} · te quedarían ${formatMoney(objetivoTotal)} · ya restó comisión de entrada`}
           tone={objetivoPnl >= 0 ? "up" : "down"}
         />
         <FormulaBox
           label="3. Promedio del modelo"
           value={`${estimate.expectedPnl >= 0 ? "+" : ""}${formatMoney(estimate.expectedPnl)}`}
-          hint={`No es el caso 2. P(cruzar BE) ${(estimate.pProfit * 100).toFixed(0)}% · te quedarían ${formatMoney(queda)}`}
+          hint={`Incluye ida y vuelta IBKR ${formatMoney(estimate.feesRound)}. P(cruzar BE) ${(estimate.pProfit * 100).toFixed(0)}% · te quedarían ${formatMoney(queda)}`}
           tone={estimate.expectedPnl >= 0 ? "up" : "down"}
         />
       </div>

@@ -39,11 +39,36 @@ export type ChartPoint = {
 type Overlay = "bb" | "sma20" | "sma50" | "sma200";
 type Range = "1m" | "3m" | "6m";
 
-const OVERLAYS: { id: Overlay; label: string; swatch: string }[] = [
-  { id: "bb", label: "Bollinger", swatch: "bg-bb" },
-  { id: "sma20", label: "SMA 20", swatch: "bg-sma20" },
-  { id: "sma50", label: "SMA 50", swatch: "bg-sma50" },
-  { id: "sma200", label: "SMA 200", swatch: "bg-sma200" },
+const OVERLAYS: {
+  id: Overlay;
+  label: string;
+  swatch: string;
+  hint: string;
+}[] = [
+  {
+    id: "bb",
+    label: "Bollinger",
+    swatch: "bg-bb",
+    hint: "Canal de volatilidad. Bueno = zona media. Malo = pegado a una banda.",
+  },
+  {
+    id: "sma20",
+    label: "SMA 20",
+    swatch: "bg-sma20",
+    hint: "Promedio 20 días. Bueno = precio encima. Malo = debajo.",
+  },
+  {
+    id: "sma50",
+    label: "SMA 50",
+    swatch: "bg-sma50",
+    hint: "Promedio 50 días. Bueno = encima. Malo = debajo.",
+  },
+  {
+    id: "sma200",
+    label: "SMA 200",
+    swatch: "bg-sma200",
+    hint: "Promedio ~1 año. Bueno = encima. Malo = debajo.",
+  },
 ];
 
 const RANGES: { id: Range; label: string; bars: number }[] = [
@@ -145,7 +170,7 @@ export function PriceChart({
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="space-y-1.5">
         <div className="flex flex-wrap gap-1">
           {RANGES.map((item) => (
             <button
@@ -161,21 +186,60 @@ export function PriceChart({
             </button>
           ))}
         </div>
-        <div className="flex flex-wrap gap-1">
-          {OVERLAYS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setOn((s) => ({ ...s, [item.id]: !s[item.id] }))}
-              className={cn(
-                "inline-flex h-6 items-center gap-1 border px-1.5 text-[10px]",
-                on[item.id] ? "border-line-strong bg-raised text-fg" : "border-line text-subtle",
-              )}
-            >
-              <span className={cn("size-1.5 rounded-full", item.swatch)} />
-              {item.label}
-            </button>
-          ))}
+        {last && <LevelGuide last={last} />}
+        <div className="grid w-full grid-cols-1 gap-1 sm:grid-cols-2">
+          {OVERLAYS.map((item) => {
+            const meter = overlayMeter(item.id, last);
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setOn((s) => ({ ...s, [item.id]: !s[item.id] }))}
+                className={cn(
+                  "border px-1.5 py-1 text-left",
+                  on[item.id] ? "border-line-strong bg-raised" : "border-line bg-bg/40 opacity-70",
+                )}
+              >
+                <span className="flex items-center gap-1.5">
+                  <span className={cn("size-1.5 shrink-0 rounded-full", item.swatch)} />
+                  <span className="text-[10px] font-medium">{item.label}</span>
+                  {meter && (
+                    <span
+                      className={cn(
+                        "ml-auto text-[9px] font-semibold tracking-wide uppercase",
+                        meter.tone === "up" && "text-up",
+                        meter.tone === "down" && "text-down",
+                        meter.tone === "wait" && "text-wait",
+                      )}
+                    >
+                      {meter.tag}
+                    </span>
+                  )}
+                </span>
+                <p className="mt-0.5 text-[9px] leading-snug text-muted">{item.hint}</p>
+                {meter && (
+                  <>
+                    <ToneBar pct={meter.pos} kind={meter.kind} />
+                    <span className="mt-0.5 flex justify-between text-[8px] text-subtle">
+                      <span>{meter.left}</span>
+                      <span>{meter.center}</span>
+                      <span>{meter.right}</span>
+                    </span>
+                    <p
+                      className={cn(
+                        "mt-0.5 text-[9px] leading-snug",
+                        meter.tone === "up" && "text-up",
+                        meter.tone === "down" && "text-down",
+                        meter.tone === "wait" && "text-wait",
+                      )}
+                    >
+                      {meter.detail}
+                    </p>
+                  </>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -356,6 +420,290 @@ export function PriceChart({
           </ResponsiveContainer>
         </div>
       </div>
+    </div>
+  );
+}
+
+function overlayMeter(id: Overlay, last?: ChartPoint) {
+  if (!last) return null;
+  const px = last.c;
+  if (id === "bb") {
+    const lo = last.lower;
+    const hi = last.upper;
+    const mid = last.mid ?? (lo != null && hi != null ? (lo + hi) / 2 : null);
+    if (lo == null || hi == null || hi <= lo || mid == null) return null;
+    const pos = Math.max(0, Math.min(100, ((px - lo) / (hi - lo)) * 100));
+    const toMid = ((mid - px) / px) * 100;
+    const gap = Math.abs(toMid).toFixed(1);
+    if (pos <= 20) {
+      return {
+        pos,
+        kind: "bb" as const,
+        tone: "down" as const,
+        tag: "MALO",
+        left: "Banda inf. malo",
+        center: "Media bueno",
+        right: "Banda sup. malo",
+        detail: `Estirado abajo. Bueno = volver a ${formatMoney(mid)}. Faltan ${gap}% al alza.`,
+      };
+    }
+    if (pos >= 80) {
+      return {
+        pos,
+        kind: "bb" as const,
+        tone: "down" as const,
+        tag: "MALO",
+        left: "Banda inf. malo",
+        center: "Media bueno",
+        right: "Banda sup. malo",
+        detail: `Estirado arriba. Bueno = volver a ${formatMoney(mid)}. Faltan ${gap}% a la baja.`,
+      };
+    }
+    if (pos <= 35 || pos >= 65) {
+      return {
+        pos,
+        kind: "bb" as const,
+        tone: "wait" as const,
+        tag: "REGULAR",
+        left: "Banda inf. malo",
+        center: "Media bueno",
+        right: "Banda sup. malo",
+        detail: `Cerca del borde. Bueno = zona media (${formatMoney(mid)}). Faltan ${gap}%.`,
+      };
+    }
+    return {
+      pos,
+      kind: "bb" as const,
+      tone: "up" as const,
+      tag: "BUENO",
+      left: "Banda inf. malo",
+      center: "Media bueno",
+      right: "Banda sup. malo",
+      detail: `En zona media. Colchón ${gap}% hasta la media ${formatMoney(mid)}.`,
+    };
+  }
+  const sma = id === "sma20" ? last.sma20 : id === "sma50" ? last.sma50 : last.sma200;
+  if (sma == null || sma <= 0) return null;
+  const move = ((px - sma) / sma) * 100;
+  const pos = Math.max(0, Math.min(100, 50 + move * (50 / 6)));
+  const gap = Math.abs(move).toFixed(1);
+  const base = {
+    pos,
+    kind: "sma" as const,
+    left: "Debajo malo",
+    center: `Meta ${formatMoney(sma)}`,
+    right: "Encima bueno",
+  };
+  if (move <= -0.35) {
+    return {
+      ...base,
+      tone: "down" as const,
+      tag: "MALO",
+      detail: `${gap}% debajo. Bueno = cruzar ${formatMoney(sma)}. Faltan ${gap}% al alza.`,
+    };
+  }
+  if (move >= 0.35) {
+    return {
+      ...base,
+      tone: "up" as const,
+      tag: "BUENO",
+      detail: `${gap}% encima de ${formatMoney(sma)}. Colchón ${gap}% hasta perder la media.`,
+    };
+  }
+  return {
+    ...base,
+    tone: "wait" as const,
+    tag: "EN LA META",
+    detail: `Pegado a ${formatMoney(sma)}. Un alza lo pone en bueno; una baja, en malo.`,
+  };
+}
+
+function ToneBar({ pct, kind }: { pct: number; kind: "sma" | "bb" }) {
+  const fill =
+    kind === "bb"
+      ? "linear-gradient(90deg,#d46565 0%,#c49a48 22%,#3cbc82 50%,#c49a48 78%,#d46565 100%)"
+      : "linear-gradient(90deg,#d46565 0%,#c49a48 50%,#3cbc82 100%)";
+  return (
+    <div className="relative mt-1 h-1.5" style={{ background: fill }}>
+      <span
+        className="absolute top-1/2 h-2.5 w-0.5 -translate-x-1/2 -translate-y-1/2 bg-white"
+        style={{ left: `${Math.max(2, Math.min(98, pct))}%` }}
+      />
+    </div>
+  );
+}
+
+type GuideMark = { id: string; v: number; label: string; color: string };
+
+function LevelGuide({ last }: { last: ChartPoint }) {
+  const px = last.c;
+  const sma = last.sma20;
+  const lo = last.lower;
+  const hi = last.upper;
+  const mid = last.mid ?? (lo != null && hi != null ? (lo + hi) / 2 : null);
+
+  const smaBelow = sma != null && px < sma * 0.9965;
+  const smaAbove = sma != null && px > sma * 1.0035;
+  const smaGap = sma ? (Math.abs(px - sma) / px) * 100 : 0;
+  const bbPos =
+    lo != null && hi != null && hi > lo ? Math.max(0, Math.min(1, (px - lo) / (hi - lo))) : 0.5;
+  const bbZone = bbPos <= 0.33 ? "low" : bbPos >= 0.67 ? "high" : "mid";
+  const toMid = mid ? (Math.abs(mid - px) / px) * 100 : 0;
+
+  return (
+    <div className="border border-line bg-raised p-2">
+      <p className="text-[9px] tracking-[0.12em] text-subtle uppercase">Cómo leerlo · 2 reglas</p>
+      <p className="mt-0.5 text-[11px] text-muted">
+        <b className="text-fg">1.</b> Medias: encima ={" "}
+        <span className="text-up">bueno</span>, debajo = <span className="text-down">malo</span>.{" "}
+        <b className="text-fg">2.</b> Bollinger: el medio = <span className="text-up">bueno</span>,
+        pegado a una banda = <span className="text-down">malo</span>.
+      </p>
+
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        <div className="border border-line bg-surface p-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <p className="text-[10px] font-semibold">SMA 20 · tendencia corta</p>
+            <p
+              className={cn(
+                "text-[10px] font-semibold",
+                smaBelow ? "text-down" : smaAbove ? "text-up" : "text-wait",
+              )}
+            >
+              {smaBelow ? "MALO" : smaAbove ? "BUENO" : "EN LA META"}
+            </p>
+          </div>
+          <div className="mt-1.5 grid grid-cols-2">
+            <Zone
+              title="MALO"
+              sub="precio debajo"
+              active={smaBelow}
+              tone="down"
+              mark={smaBelow ? `AQUÍ ${formatMoney(px)}` : undefined}
+            />
+            <Zone
+              title="BUENO"
+              sub="precio encima"
+              active={smaAbove || (!smaBelow && sma != null)}
+              tone="up"
+              mark={smaAbove ? `AQUÍ ${formatMoney(px)}` : !smaBelow && sma ? `AQUÍ ${formatMoney(px)}` : undefined}
+            />
+          </div>
+          {sma != null ? (
+            <p className="mt-1.5 text-[11px] leading-snug">
+              {smaBelow ? (
+                <>
+                  Estás en <span className="text-down">malo</span>. Bueno empieza en{" "}
+                  <b>{formatMoney(sma)}</b>. Hay que <b>subir {smaGap.toFixed(1)}%</b> (
+                  {formatMoney(sma - px)}).
+                </>
+              ) : smaAbove ? (
+                <>
+                  Estás en <span className="text-up">bueno</span>: {smaGap.toFixed(1)}% sobre{" "}
+                  <b>{formatMoney(sma)}</b>. Si cae esa media, pasa a malo.
+                </>
+              ) : (
+                <>
+                  Pegado a la meta <b>{formatMoney(sma)}</b>. Un alza = bueno; una baja = malo.
+                </>
+              )}
+            </p>
+          ) : (
+            <p className="mt-1.5 text-[11px] text-muted">Sin SMA 20 todavía.</p>
+          )}
+        </div>
+
+        <div className="border border-line bg-surface p-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <p className="text-[10px] font-semibold">Bollinger · volatilidad</p>
+            <p
+              className={cn(
+                "text-[10px] font-semibold",
+                bbZone === "mid" ? "text-up" : "text-down",
+              )}
+            >
+              {bbZone === "mid" ? "BUENO" : "MALO"}
+            </p>
+          </div>
+          <div className="mt-1.5 grid grid-cols-3">
+            <Zone
+              title="MALO"
+              sub="banda inf."
+              active={bbZone === "low"}
+              tone="down"
+              mark={bbZone === "low" ? `AQUÍ ${formatMoney(px)}` : undefined}
+            />
+            <Zone
+              title="BUENO"
+              sub="zona media"
+              active={bbZone === "mid"}
+              tone="up"
+              mark={bbZone === "mid" ? `AQUÍ ${formatMoney(px)}` : undefined}
+            />
+            <Zone
+              title="MALO"
+              sub="banda sup."
+              active={bbZone === "high"}
+              tone="down"
+              mark={bbZone === "high" ? `AQUÍ ${formatMoney(px)}` : undefined}
+            />
+          </div>
+          {mid != null && lo != null && hi != null ? (
+            <p className="mt-1.5 text-[11px] leading-snug">
+              {bbZone === "low" && (
+                <>
+                  Estirado abajo. Bueno = volver a <b>{formatMoney(mid)}</b>. Faltan{" "}
+                  <b>{toMid.toFixed(1)}% al alza</b>.
+                </>
+              )}
+              {bbZone === "high" && (
+                <>
+                  Estirado arriba. Bueno = volver a <b>{formatMoney(mid)}</b>. Faltan{" "}
+                  <b>{toMid.toFixed(1)}% a la baja</b>.
+                </>
+              )}
+              {bbZone === "mid" && (
+                <>
+                  En el centro del canal (bueno). Media {formatMoney(mid)} · bandas{" "}
+                  {formatMoney(lo)}–{formatMoney(hi)}.
+                </>
+              )}
+            </p>
+          ) : (
+            <p className="mt-1.5 text-[11px] text-muted">Sin bandas todavía.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Zone({
+  title,
+  sub,
+  active,
+  tone,
+  mark,
+}: {
+  title: string;
+  sub: string;
+  active: boolean;
+  tone: "up" | "down";
+  mark?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex min-h-14 flex-col items-center justify-center border px-1 py-1 text-center",
+        tone === "up" ? "border-up/40" : "border-down/40",
+        active && tone === "up" && "bg-up/20",
+        active && tone === "down" && "bg-down/20",
+        !active && "bg-bg/50 opacity-50",
+      )}
+    >
+      <p className={cn("text-[10px] font-semibold", tone === "up" ? "text-up" : "text-down")}>{title}</p>
+      <p className="text-[8px] text-muted">{sub}</p>
+      {mark && <p className="mt-0.5 text-[9px] font-semibold text-fg">{mark}</p>}
     </div>
   );
 }
