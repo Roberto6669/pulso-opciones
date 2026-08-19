@@ -1,0 +1,79 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme {
+  --color-bg: #14171b;
+  --color-surface: #1a1e24;
+  --color-raised: #22272e;
+  --color-fg: #dce3eb;
+  --color-muted: #8b96a3;
+  --color-subtle: #66717d;
+  --color-line: color-mix(in oklab, var(--color-fg) 10%, transparent);
+  --color-line-strong: color-mix(in oklab, var(--color-fg) 18%, transparent);
+  --color-accent: #4a96ea;
+  --color-accent-fg: #061018;
+  --color-up: #3cbc82;
+  --color-down: #d46565;
+  --color-sma20: #c9a25a;
+  --color-sma50: #7e96b5;
+  --color-sma200: #d46565;
+  --color-bb: #6a93c4;
+  --color-macd: #8e99a8;
+  --color-wait: #c49a48;
+  --color-warn: #c49a48;
+  --color-danger: #d46565;
+
+  --font-display: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+
+  --text-xs: 0.6875rem;
+  --text-sm: 0.75rem;
+  --text-base: 0.8125rem;
+  --text-lg: 0.9375rem;
+  --text-xl: 1.0625rem;
+  --text-2xl: 1.25rem;
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body {
+    background: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    min-height: 100%;
+    font-size: 13px;
+  }
+
+  body {
+    line-height: 1.35;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-accent) 28%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,7 +1,8 @@
-# Pulso Opciones
+# Pulso Options Analyzer — WEB5.0 v3.6
 
-**WEB5.0 — v1.2**
+Opciones (default), acciones y ETF.
 
-Escáner de opciones por **presupuesto** y **fecha**.
-
-$25 y $50 buscan weeklies lejos del dinero (OTM): el costo es prima × 100.
+```bash
+npm install
+npm run dev
+```
