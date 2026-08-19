@@ -1,5 +1,5 @@
 import type { SignalKind } from "./analysis";
-import { histVol } from "./estimate";
+import { histDrift, histVol } from "./estimate";
 
 export type MarketMode = "options" | "stocks" | "etf";
 
@@ -103,8 +103,7 @@ export function estimateEquity(
   const capital = shares * px;
   const hv = hit.hv || histVol(closes.length ? closes : [px * 0.97, px]);
   const T = Math.max(dte, 1) / 365;
-  const drift =
-    hit.kind === "comprar" ? 0.08 : hit.kind === "vender" ? -0.06 : 0.02;
+  const drift = histDrift(closes, hit.kind === "comprar");
   const expectedSpot = px * Math.exp(drift * T);
   const expectedPnl = (expectedSpot - px) * shares;
   const expectedMovePct = (Math.exp(hv * Math.sqrt(T)) - 1) * 100;

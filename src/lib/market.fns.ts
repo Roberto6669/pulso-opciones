@@ -210,10 +210,26 @@ function pickLegs(legs: LiveOption[], budget: number, spot: number) {
   return legs
     .map((leg) => {
       const mid = (leg.bid + leg.ask) / 2 || leg.last;
-      return { leg, mid, debit: mid * 100, dist: Math.abs(leg.strike - spot) / (spot || 1) };
+      const spread = Math.max(0, leg.ask - leg.bid);
+      const spreadPct = mid > 0 ? spread / mid : 1;
+      return {
+        leg,
+        mid,
+        debit: mid * 100,
+        dist: Math.abs(leg.strike - spot) / (spot || 1),
+        spreadPct,
+        flow: leg.volume + leg.openInterest * 0.4,
+      };
     })
-    .filter((row) => row.debit > 0 && row.debit <= budget && row.dist <= 0.18)
-    .sort((a, b) => b.leg.volume + b.leg.openInterest * 0.4 - (a.dist - b.dist) * 8000 - (a.leg.volume + a.leg.openInterest * 0.4))
+    .filter(
+      (row) =>
+        row.debit > 0 &&
+        row.debit <= budget &&
+        row.dist <= 0.12 &&
+        row.spreadPct <= 0.22 &&
+        (row.leg.volume > 0 || row.leg.openInterest > 20),
+    )
+    .sort((a, b) => b.flow - a.flow - (a.dist - b.dist) * 4000)
     .slice(0, 3)
     .map((row) => row.leg);
 }

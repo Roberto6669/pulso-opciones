@@ -164,7 +164,7 @@ function Home() {
     });
   }, [analysis, budget, days, picked]);
 
-  const action = estimate ? actionFor(estimate, analysis) : null;
+  const action = estimate ? actionFor(estimate, analysis, picked ?? undefined) : null;
   const tags = picked ? setupTags(analysis, picked) : [];
   const reasons = picked ? whyAppeared(picked, analysis) : [];
   const eqEst = useMemo(() => {
@@ -584,7 +584,7 @@ function Home() {
                     const active = picked?.s === c.s && picked.t === c.t && picked.k === c.k;
                     const spot = analysis?.price && picked?.s === c.s ? analysis.price : c.px;
                     const rowEst = estimatePayoff(c, spot, budget, { dte: days });
-                    const rowAct = actionFor(rowEst, picked?.s === c.s ? analysis : null);
+                    const rowAct = actionFor(rowEst, picked?.s === c.s ? analysis : null, c);
                     return (
                       <tr
                         key={`${c.s}-${c.t}-${c.k}`}
@@ -706,7 +706,7 @@ function Home() {
                 <ScoreBar
                   score={analysis?.verdict.score ?? picked.score}
                   label="SCORE SETUP"
-                  hint={`${confidenceLabel(analysis?.verdict.score ?? picked.score)} · ${action?.label ?? ""}`}
+                  hint={`${picked.parts ? `Liq ${picked.parts.liq} · Téc ${picked.parts.tech} · Dir ${picked.parts.dir} · ` : ""}${confidenceLabel(analysis?.verdict.score ?? picked.score)}`}
                 />
                 <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2">
                   <div>
@@ -878,12 +878,17 @@ function Home() {
                     <Row k="Prima pagada" v={formatMoney(estimate.capital)} />
                     <Row k="Teórico BS" v={formatMoney(estimate.fair * 100 * estimate.contracts)} />
                     <Row
-                      k="Valor esperado"
+                      k="Si llega la tesis"
+                      v={`${estimate.targetPnl >= 0 ? "+" : ""}${formatMoney(estimate.targetPnl)}`}
+                      tone={estimate.targetPnl >= 0 ? "up" : "down"}
+                    />
+                    <Row
+                      k="Promedio modelo"
                       v={`${estimate.expectedPnl >= 0 ? "+" : ""}${formatMoney(estimate.expectedPnl)}`}
                       tone={estimate.expectedPnl >= 0 ? "up" : "down"}
                     />
                     <Row
-                      k="Te quedarían"
+                      k="Te quedarían (prom.)"
                       v={formatMoney(estimate.capital + estimate.expectedPnl)}
                       tone={estimate.capital + estimate.expectedPnl >= estimate.capital ? "up" : "down"}
                     />

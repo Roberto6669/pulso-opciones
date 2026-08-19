@@ -46,9 +46,13 @@ export function OptionTicket({
 
       <div className="grid grid-cols-4 gap-px border-t border-line bg-line">
         <Stat k="Prima" v={formatMoney(estimate.capital)} />
-        <Stat k="Teórico" v={formatMoney(estimate.fair * 100 * estimate.contracts)} />
-        <Stat k="VE" v={`${ve >= 0 ? "+" : ""}${formatMoney(ve)}`} tone={ve >= 0 ? "up" : "down"} />
-        <Stat k="Quedan" v={formatMoney(queda)} tone={queda >= estimate.capital ? "up" : "down"} />
+        <Stat
+          k="Si tesis"
+          v={`${estimate.targetPnl >= 0 ? "+" : ""}${formatMoney(estimate.targetPnl)}`}
+          tone={estimate.targetPnl >= 0 ? "up" : "down"}
+        />
+        <Stat k="Promedio" v={`${ve >= 0 ? "+" : ""}${formatMoney(ve)}`} tone={ve >= 0 ? "up" : "down"} />
+        <Stat k="Quedan*" v={formatMoney(queda)} tone={queda >= estimate.capital ? "up" : "down"} />
         <Stat k="Mid" v={formatMoney(contract.mid)} />
         <Stat k="DTE" v={String(dte)} />
         <Stat k="BE" v={formatMoney(estimate.breakeven)} />

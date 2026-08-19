@@ -32,6 +32,9 @@ export type Estimate = {
   expectedPnl: number;
   expectedPnlPct: number;
   fair: number;
+  targetPnl: number;
+  sigma: number;
+  ivUsed: number | null;
   featured: Scenario;
   scenarios: Scenario[];
   lastWindow: HistTrade | null;
@@ -84,7 +87,7 @@ export function histVol(closes: number[]) {
   return Math.min(1.2, Math.max(0.1, Math.sqrt(v * 252)));
 }
 
-function histDrift(closes: number[], aligned: boolean) {
+export function histDrift(closes: number[], aligned: boolean) {
   if (closes.length < 20) return aligned ? 0.06 : 0;
   const n = Math.min(closes.length - 1, 60);
   const a = closes[closes.length - 1 - n];
@@ -124,11 +127,11 @@ export function estimatePayoff(
   const T = Math.max(dte, 1) / 365;
   const closes = opts?.closes?.filter((c) => c > 0) ?? [];
   const hv = histVol(closes.length ? closes : [spot * 0.95, spot]);
-  // Las primas de muestra van con un px viejo. El strike se mueve
-  // a la misma distancia % sobre el spot real para no inventar ITM fantasma.
+  const ivRaw = contract.iv && contract.iv > 0.08 && contract.iv < 1.8 ? contract.iv : null;
+  const sigma = ivRaw ? ivRaw * 0.65 + hv * 0.35 : hv;
+  const live = contract.source === "live";
   const ref = contract.px > 0 ? contract.px : spot;
-  const moneyness = contract.k / ref;
-  const liveK = spot > 0 ? spot * moneyness : contract.k;
+  const liveK = live || ref <= 0 ? contract.k : spot * (contract.k / ref);
   const aligned =
     (contract.trend === "up" && contract.t === "call") ||
     (contract.trend === "down" && contract.t === "put");
@@ -146,18 +149,20 @@ export function estimatePayoff(
   const breakeven =
     contract.t === "call" ? liveK + contract.mid : liveK - contract.mid;
   const expectedSpot = spot * Math.exp(mu * T);
-  const expectedMovePct = (Math.exp(hv * Math.sqrt(T)) - 1) * 100;
+  const expectedMovePct = (Math.exp(sigma * Math.sqrt(T)) - 1) * 100;
   const zBe = Math.log(breakeven / spot);
   const pProfit =
     contract.t === "call"
-      ? 1 - nCdf((zBe - (mu - 0.5 * hv * hv) * T) / (hv * Math.sqrt(T)))
-      : nCdf((zBe - (mu - 0.5 * hv * hv) * T) / (hv * Math.sqrt(T)));
+      ? 1 - nCdf((zBe - (mu - 0.5 * sigma * sigma) * T) / (sigma * Math.sqrt(T)))
+      : nCdf((zBe - (mu - 0.5 * sigma * sigma) * T) / (sigma * Math.sqrt(T)));
 
-  const fair = bsPrice(spot, liveK, T, hv, contract.t);
+  const fair = bsPrice(spot, liveK, T, sigma, contract.t);
   const expectedPnl = (fair - contract.mid) * 100 * n;
   const expectedPnlPct = capital ? (expectedPnl / capital) * 100 : 0;
+  const targetPnl = (intrinsic(contract.t, liveK, expectedSpot) - contract.mid) * 100 * n;
 
-  const atSigma = (z: number) => spot * Math.exp((mu - 0.5 * hv * hv) * T + z * hv * Math.sqrt(T));
+  const atSigma = (z: number) =>
+    spot * Math.exp((mu - 0.5 * sigma * sigma) * T + z * sigma * Math.sqrt(T));
 
   const pack = (id: string, label: string, at: number): Scenario => {
     const value = intrinsic(contract.t, liveK, at);
@@ -203,8 +208,8 @@ export function estimatePayoff(
     for (let i = 0; i + step < closes.length; i += Math.max(1, Math.floor(step / 2))) {
       const S0 = closes[i];
       const S1 = closes[i + step];
-      const K = S0 * moneyness;
-      const entry = Math.max(bsPrice(S0, K, T, hv, contract.t), 0.05);
+      const K = live ? liveK * (S0 / (spot || S0)) : S0 * (contract.k / (ref || S0));
+      const entry = Math.max(bsPrice(S0, K, T, sigma, contract.t), 0.05);
       const exit = intrinsic(contract.t, K, S1);
       const pnlEach = (exit - entry) * 100;
       const qty = Math.max(1, Math.floor(budget / (entry * 100)));
@@ -241,6 +246,9 @@ export function estimatePayoff(
     expectedPnl,
     expectedPnlPct,
     fair,
+    targetPnl,
+    sigma,
+    ivUsed: ivRaw,
     featured,
     scenarios,
     lastWindow,

@@ -24,6 +24,7 @@ export type Ranked = Contract & {
   exp?: string;
   source?: "live" | "sample";
   techScore?: number;
+  parts?: { liq: number; tech: number; dir: number };
 };
 
 export const SCAN_SYMBOLS = [
@@ -144,28 +145,33 @@ export function scoreContract(
   const debit = mid * 100;
   const spread = Math.max(0, c.ask - c.bid);
   const spreadPct = mid > 0 ? spread / mid : 1;
-  const volScore = Math.min(c.vol / 40000, 1) * 28;
-  const oiScore = Math.min(c.oi / 50000, 1) * 16;
-  const tightScore = Math.max(0, 1 - spreadPct / 0.2) * 16;
+  const liq = Math.round(
+    Math.min(c.vol / 25000, 1) * 22 +
+      Math.min(c.oi / 40000, 1) * 12 +
+      Math.max(0, 1 - spreadPct / 0.18) * 14,
+  );
   const aligned =
     (extras.kind === "comprar" && c.t === "call") ||
     (extras.kind === "vender" && c.t === "put") ||
     (c.trend === "up" && c.t === "call") ||
     (c.trend === "down" && c.t === "put");
-  const trendScore = aligned ? 16 : extras.kind === "esperar" ? 6 : 4;
-  const techScore = Math.max(0, Math.min(extras.techScore ?? 50, 100)) * 0.24;
+  const dir = aligned ? 18 : extras.kind === "esperar" ? 7 : 3;
+  const tech = Math.round(Math.max(0, Math.min(extras.techScore ?? 50, 100)) * 0.34);
+  const penalty = spreadPct > 0.22 || (c.vol < 50 && extras.source === "live") ? 12 : 0;
+  const score = Math.max(0, Math.min(100, liq + tech + dir - penalty));
   const row: Ranked = {
     ...c,
     mid,
     debit,
     spread,
-    score: Math.round(volScore + oiScore + tightScore + trendScore + techScore),
+    score,
     why: "",
     name: extras.name,
     iv: extras.iv,
     exp: extras.exp,
     source: extras.source ?? "sample",
     techScore: extras.techScore,
+    parts: { liq, tech, dir },
   };
   row.why = why(row);
   return row;

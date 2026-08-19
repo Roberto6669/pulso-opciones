@@ -28,21 +28,36 @@ export function setupTags(analysis: PublicAnalysis | null, contract: Ranked): Ta
   return tags.slice(0, 4);
 }
 
-export function actionFor(estimate: Estimate, analysis: PublicAnalysis | null) {
+export function actionFor(estimate: Estimate, analysis: PublicAnalysis | null, contract?: Ranked) {
   if (estimate.contracts < 1) {
     return { label: "NO COMPRAR", tone: "down" as const, detail: "El presupuesto no cubre un contrato entero." };
   }
-  if (estimate.expectedPnl <= 0 || estimate.pProfit < 0.28) {
+  if (estimate.pProfit < 0.16) {
     return {
-      label: "VIGILAR",
-      tone: "wait" as const,
-      detail: "El valor esperado es débil o la probabilidad de ganar es baja.",
+      label: "EVITAR",
+      tone: "down" as const,
+      detail: "Poca probabilidad de cruzar el break-even antes del vencimiento.",
     };
   }
-  if (analysis?.verdict.kind === "vender") {
-    return { label: "VIGILAR", tone: "wait" as const, detail: "El técnico no acompaña esta dirección." };
+  const against =
+    contract &&
+    ((contract.t === "call" && analysis?.verdict.kind === "vender") ||
+      (contract.t === "put" && analysis?.verdict.kind === "comprar"));
+  if (against) {
+    return { label: "VIGILAR", tone: "wait" as const, detail: "El técnico apunta al lado contrario." };
   }
-  return { label: "ANALIZAR", tone: "up" as const, detail: "Pasa el filtro mínimo de liquidez y valor esperado." };
+  if (estimate.pProfit >= 0.3 && (estimate.targetPnl > 0 || estimate.expectedPnl > -estimate.capital * 0.15)) {
+    return {
+      label: "ANALIZAR",
+      tone: "up" as const,
+      detail: "Hay chance razonable de cruzar el BE y el técnico no lo contradice.",
+    };
+  }
+  return {
+    label: "VIGILAR",
+    tone: "wait" as const,
+    detail: "No es un no, pero el promedio del modelo no es fuerte.",
+  };
 }
 
 export function confidenceLabel(score: number) {
@@ -74,7 +89,7 @@ export function thesis(
       : (analysis?.indicators.sma20 ?? spot * 1.03);
   return {
     side,
-    text: `La tesis es ${side}. En ${Math.max(days, 1)} DTE el movimiento típico (vol ${(estimate.hv * 100).toFixed(0)}%) apunta cerca de ${target.toFixed(2)}. Con ${estimate.contracts} contrato(s) inviertes ${estimate.capital.toFixed(2)}; el valor esperado no es una promesa, es el promedio del modelo. Si se pierde el nivel ${inv.toFixed(2)}, la tesis pierde calidad.`,
+    text: `Tesis ${side}: si en ${Math.max(days, 1)} días el precio va hacia ${target.toFixed(2)}, el contrato gana o pierde según cruce ${estimate.breakeven.toFixed(2)}. “Promedio del modelo” no es esa ganancia: es lo que la prima vale hoy según la volatilidad.`,
     target,
     invalidation: inv,
     watch:
