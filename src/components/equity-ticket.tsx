@@ -27,8 +27,8 @@ export function EquityTicket({
         </p>
       </div>
       <div className="grid grid-cols-4 gap-px border-t border-line bg-line">
-        <Stat k="Capital" v={formatMoney(estimate.capital)} />
-        <Stat k="IBKR" v={formatMoney(estimate.fees)} />
+        <Stat k="Capital" v={formatMoney(estimate.capital)} tone="wait" />
+        <Stat k="IBKR" v={formatMoney(estimate.fees)} tone="wait" />
         <Stat k="Acciones" v={String(estimate.shares)} />
         <Stat
           k="VE"
@@ -56,7 +56,7 @@ function Stat({
 }: {
   k: string;
   v: string;
-  tone?: "up" | "down";
+  tone?: "up" | "down" | "wait";
 }) {
   return (
     <div className="bg-surface px-1.5 py-1">
@@ -66,6 +66,7 @@ function Stat({
           "truncate font-mono text-[11px] tabular-nums",
           tone === "up" && "text-up",
           tone === "down" && "text-down",
+          tone === "wait" && "text-wait",
         )}
       >
         {v}

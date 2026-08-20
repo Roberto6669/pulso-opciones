@@ -45,8 +45,8 @@ export function OptionTicket({
       </div>
 
       <div className="grid grid-cols-4 gap-px border-t border-line bg-line">
-        <Stat k="Prima" v={formatMoney(estimate.capital)} />
-        <Stat k="IBKR" v={formatMoney(estimate.feesRound)} />
+        <Stat k="Prima" v={formatMoney(estimate.capital)} tone="wait" />
+        <Stat k="IBKR" v={formatMoney(estimate.feesRound)} tone="wait" />
         <Stat
           k="Si tesis"
           v={`${estimate.targetPnl >= 0 ? "+" : ""}${formatMoney(estimate.targetPnl)}`}
@@ -82,7 +82,7 @@ function Stat({
 }: {
   k: string;
   v: string;
-  tone?: "up" | "down";
+  tone?: "up" | "down" | "wait";
 }) {
   return (
     <div className="bg-surface px-1.5 py-1">
@@ -92,6 +92,7 @@ function Stat({
           "truncate font-mono text-[11px] tabular-nums",
           tone === "up" && "text-up",
           tone === "down" && "text-down",
+          tone === "wait" && "text-wait",
         )}
       >
         {v}

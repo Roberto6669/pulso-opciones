@@ -935,8 +935,8 @@ function Home() {
                 )}
                 {isOptions && estimate && (
                   <>
-                    <Row k="Prima pagada" v={formatMoney(estimate.capital)} />
-                    <Row k="Comisión IBKR" v={formatMoney(estimate.feesRound)} />
+                    <Row k="Prima pagada" v={formatMoney(estimate.capital)} tone="wait" />
+                    <Row k="Comisión IBKR" v={formatMoney(estimate.feesRound)} tone="wait" />
                     <Row k="Máx. a perder" v={formatMoney(estimate.maxLoss)} />
                     <Row k="Teórico BS" v={formatMoney(estimate.fair * 100 * estimate.contracts)} />
                     <Row
@@ -960,8 +960,8 @@ function Home() {
                 )}
                 {!isOptions && eqEst && (
                   <>
-                    <Row k="Capital" v={formatMoney(eqEst.capital)} />
-                    <Row k="Comisión IBKR" v={formatMoney(eqEst.fees)} />
+                    <Row k="Capital" v={formatMoney(eqEst.capital)} tone="wait" />
+                    <Row k="Comisión IBKR" v={formatMoney(eqEst.fees)} tone="wait" />
                     <Row k="Acciones" v={String(eqEst.shares)} />
                     <Row
                       k="Valor esperado"
@@ -988,7 +988,7 @@ function Home() {
   );
 }
 
-function Row({ k, v, tone }: { k: string; v: string; tone?: "up" | "down" }) {
+function Row({ k, v, tone }: { k: string; v: string; tone?: "up" | "down" | "wait" }) {
   return (
     <div className="flex items-start justify-between gap-2 border-t border-line pt-1">
       <dt className="text-[10px] text-subtle">{k}</dt>
@@ -997,6 +997,7 @@ function Row({ k, v, tone }: { k: string; v: string; tone?: "up" | "down" }) {
           "text-right font-mono text-[11px] tabular-nums",
           tone === "up" && "text-up",
           tone === "down" && "text-down",
+          tone === "wait" && "text-wait",
         )}
       >
         {v}
