@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { chartSeries, computeIndicators, judge, sparkline, type SignalKind, type SparkPoint } from "./analysis";
 import {
   fetchChart,
+  fetchHotUnderlyings,
   fetchOptionChain,
   INDEX_SYMBOLS,
   RADAR_SYMBOLS,
@@ -97,6 +98,13 @@ export const fetchIndices = createServerFn({ method: "POST" })
         }
       }),
     );
+  });
+
+export const fetchHotUniverse = createServerFn({ method: "POST" })
+  .validator(() => true)
+  .handler(async () => {
+    const symbols = await fetchHotUnderlyings();
+    return { symbols };
   });
 
 export type RadarRow = {

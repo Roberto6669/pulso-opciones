@@ -36,13 +36,20 @@ export function MiniChart({
       p.m == null ? "" : `${i === 0 || points[i - 1]?.m == null ? "M" : "L"}${x(i).toFixed(1)},${y(p.m).toFixed(1)}`,
     )
     .join(" ");
-  const stroke = up === false ? "#d46565" : "#3cbc82";
+  const stroke = up === false ? "var(--color-down)" : "var(--color-up)";
 
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="h-8 w-[5.5rem] overflow-visible" aria-hidden>
-      {band && <path d={band} fill="#6a93c4" fillOpacity="0.28" />}
-      {mid && <path d={mid} fill="none" stroke="#c9a25a" strokeWidth="0.8" strokeDasharray="2 1.5" />}
-      <path d={line} fill="none" stroke={stroke} strokeWidth="1.3" />
+      <defs>
+        <linearGradient id={`miniFill-${up ? "u" : "d"}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={stroke} stopOpacity="0.45" />
+          <stop offset="100%" stopColor={stroke} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {band && <path d={band} fill="var(--color-bb)" fillOpacity="0.22" />}
+      {mid && <path d={mid} fill="none" stroke="var(--color-sma20)" strokeWidth="0.9" />}
+      <path d={`${line} L${x(points.length - 1).toFixed(1)},${h} L${x(0).toFixed(1)},${h} Z`} fill={`url(#miniFill-${up ? "u" : "d"})`} />
+      <path d={line} fill="none" stroke={stroke} strokeWidth="1.6" />
     </svg>
   );
 }

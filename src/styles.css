@@ -2,26 +2,26 @@
 @import "tw-animate-css";
 
 @theme {
-  --color-bg: #14171b;
-  --color-surface: #1a1e24;
-  --color-raised: #22272e;
-  --color-fg: #dce3eb;
-  --color-muted: #8b96a3;
-  --color-subtle: #66717d;
-  --color-line: color-mix(in oklab, var(--color-fg) 10%, transparent);
-  --color-line-strong: color-mix(in oklab, var(--color-fg) 18%, transparent);
-  --color-accent: #4a96ea;
-  --color-accent-fg: #061018;
-  --color-up: #3cbc82;
-  --color-down: #d46565;
-  --color-sma20: #c9a25a;
-  --color-sma50: #7e96b5;
-  --color-sma200: #d46565;
-  --color-bb: #6a93c4;
-  --color-macd: #8e99a8;
-  --color-wait: #c49a48;
-  --color-warn: #c49a48;
-  --color-danger: #d46565;
+  --color-bg: #05070b;
+  --color-surface: #0a1016;
+  --color-raised: #101820;
+  --color-fg: #d8f6f2;
+  --color-muted: #7f9aa0;
+  --color-subtle: #5a7378;
+  --color-line: color-mix(in oklab, #00e5d4 14%, transparent);
+  --color-line-strong: color-mix(in oklab, #00e5d4 28%, transparent);
+  --color-accent: #00e5d4;
+  --color-accent-fg: #031014;
+  --color-up: #1ee08a;
+  --color-down: #ff3d6e;
+  --color-sma20: #f0c14b;
+  --color-sma50: #ff4ec8;
+  --color-sma200: #ff3d6e;
+  --color-bb: #5ad6ff;
+  --color-macd: #9aa8b5;
+  --color-wait: #f0c14b;
+  --color-warn: #f0c14b;
+  --color-danger: #ff3d6e;
 
   --font-display: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   --font-sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
@@ -48,7 +48,12 @@
 
   html,
   body {
-    background: var(--color-bg);
+    background-color: var(--color-bg);
+    background-image:
+      linear-gradient(color-mix(in oklab, var(--color-accent) 7%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in oklab, var(--color-accent) 7%, transparent) 1px, transparent 1px),
+      radial-gradient(1100px 420px at 78% -8%, color-mix(in oklab, var(--color-accent) 18%, transparent), transparent 58%);
+    background-size: 28px 28px, 28px 28px, auto;
     color: var(--color-fg);
     font-family: var(--font-sans);
     min-height: 100%;

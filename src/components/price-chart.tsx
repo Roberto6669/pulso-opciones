@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Area,
   Bar,
   CartesianGrid,
   Cell,
   ComposedChart,
+  Customized,
   Line,
   ReferenceLine,
   ResponsiveContainer,
@@ -14,6 +15,7 @@ import {
 } from "recharts";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import { Maximize2, Minimize2 } from "lucide-react";
 import { cn, formatCompact, formatMoney } from "@/lib/utils";
 
 export type ChartPoint = {
@@ -34,6 +36,8 @@ export type ChartPoint = {
   signal?: number | null;
   hist?: number | null;
   up?: boolean;
+  bbBase?: number | null;
+  bbWidth?: number | null;
 };
 
 type Overlay = "bb" | "sma20" | "sma50" | "sma200";
@@ -81,41 +85,71 @@ function axisTick(v: number) {
   return format(v, "d MMM", { locale: es });
 }
 
-function Candle(props: {
-  x?: number;
-  width?: number;
-  payload?: ChartPoint;
-  background?: { y: number; height: number };
-  yMin: number;
-  yMax: number;
+function CandleLayer(props: {
+  xAxisMap?: Record<string, { scale?: (v: unknown) => number; bandwidth?: () => number }>;
+  yAxisMap?: Record<string, { scale?: (v: number) => number; yAxisId?: string | number }>;
+  data: ChartPoint[];
 }) {
-  const p = props.payload;
-  const bg = props.background;
-  const x = props.x ?? 0;
-  const width = props.width ?? 4;
-  if (!p || !bg) return null;
-  const o = p.o ?? p.c;
-  const h = p.h ?? p.c;
-  const l = p.l ?? p.c;
-  const span = props.yMax - props.yMin || 1;
-  const scale = (v: number) => bg.y + ((props.yMax - v) / span) * bg.height;
-  const up = p.c >= o;
-  const color = up ? "var(--color-up)" : "var(--color-down)";
-  const cx = x + width / 2;
-  const bw = Math.max(width * 0.62, 2);
-  const yO = scale(o);
-  const yC = scale(p.c);
+  const xAxis = Object.values(props.xAxisMap ?? {})[0];
+  const axes = Object.values(props.yAxisMap ?? {});
+  const yAxis = axes.find((ax) => ax.yAxisId === "price") ?? axes[0];
+  if (!xAxis?.scale || !yAxis?.scale) return null;
+  const bw = Math.max(2, (xAxis.bandwidth?.() ?? 6) * 0.55);
   return (
     <g>
-      <line x1={cx} y1={scale(h)} x2={cx} y2={scale(l)} stroke={color} strokeWidth={1.2} />
-      <rect
-        x={cx - bw / 2}
-        y={Math.min(yO, yC)}
-        width={bw}
-        height={Math.max(Math.abs(yC - yO), 1.2)}
-        fill={color}
-      />
+      {props.data.map((p, i) => {
+        const x0 = Number(xAxis.scale?.(p.t));
+        const x = Number.isFinite(x0) ? x0 : Number(xAxis.scale?.(i));
+        if (!Number.isFinite(x)) return null;
+        const o = p.o ?? p.c;
+        const hi = p.h ?? p.c;
+        const lo = p.l ?? p.c;
+        const yO = yAxis.scale?.(o) ?? 0;
+        const yC = yAxis.scale?.(p.c) ?? 0;
+        const yH = yAxis.scale?.(hi) ?? 0;
+        const yL = yAxis.scale?.(lo) ?? 0;
+        const up = p.c >= o;
+        const color = up ? "var(--color-up)" : "var(--color-down)";
+        const cx = x + (xAxis.bandwidth?.() ?? bw) / 2;
+        return (
+          <g key={p.t}>
+            <line x1={cx} y1={yH} x2={cx} y2={yL} stroke={color} strokeWidth={1.4} />
+            <rect
+              x={cx - bw / 2}
+              y={Math.min(yO, yC)}
+              width={bw}
+              height={Math.max(Math.abs(yC - yO), 1.2)}
+              fill={color}
+            />
+          </g>
+        );
+      })}
     </g>
+  );
+}
+
+function BollingerFill(props: {
+  xAxisMap?: Record<string, { scale?: (v: unknown) => number }>;
+  yAxisMap?: Record<string, { scale?: (v: number) => number; yAxisId?: string | number }>;
+  data: ChartPoint[];
+}) {
+  const xAxis = Object.values(props.xAxisMap ?? {})[0];
+  const axes = Object.values(props.yAxisMap ?? {});
+  const yAxis = axes.find((ax) => ax.yAxisId === "price") ?? axes[0];
+  if (!xAxis?.scale || !yAxis?.scale) return null;
+  const pts = props.data.filter((p) => p.upper != null && p.lower != null);
+  if (pts.length < 3) return null;
+  const xs = pts.map((p, i) => {
+    const a = Number(xAxis.scale?.(p.t));
+    return Number.isFinite(a) ? a : Number(xAxis.scale?.(i));
+  });
+  if (xs.some((v) => !Number.isFinite(v))) return null;
+  const top = pts.map((p, i) => `${xs[i]},${yAxis.scale?.(p.upper as number)}`);
+  const bot = [...pts]
+    .reverse()
+    .map((p, i) => `${xs[pts.length - 1 - i]},${yAxis.scale?.(p.lower as number)}`);
+  return (
+    <path d={`M${top.join("L")}L${bot.join("L")}Z`} fill="var(--color-bb)" fillOpacity={0.2} />
   );
 }
 
@@ -132,14 +166,33 @@ export function PriceChart({
     bb: true,
     sma20: true,
     sma50: true,
-    sma200: false,
+    sma200: true,
   });
   const [range, setRange] = useState<Range>("3m");
+  const [full, setFull] = useState(false);
+
+  useEffect(() => {
+    if (!full) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFull(false);
+    };
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [full]);
 
   const data = useMemo(() => {
     const ready = series.filter((p) => Number.isFinite(p.c));
     const n = RANGES.find((r) => r.id === range)?.bars ?? 66;
-    return ready.slice(-n);
+    return ready.slice(-n).map((p) => ({
+      ...p,
+      bbBase: p.lower ?? null,
+      bbWidth: p.upper != null && p.lower != null ? p.upper - p.lower : null,
+    }));
   }, [range, series]);
 
   const { yMin, yMax, last } = useMemo(() => {
@@ -153,7 +206,7 @@ export function PriceChart({
       min = Math.min(min, target.price);
       max = Math.max(max, target.price);
     }
-    const pad = (max - min) * 0.06 || 1;
+    const pad = (max - min) * 0.1 || 1;
     return {
       yMin: min - pad,
       yMax: max + pad,
@@ -243,45 +296,72 @@ export function PriceChart({
         </div>
       </div>
 
-      <div className="bg-bg/70 p-1.5">
-        <div className="mb-0.5 flex items-baseline justify-between px-1">
-          <p className="text-[9px] tracking-[0.12em] text-subtle uppercase">Precio · Velas</p>
-          {last && (
-            <p className="font-mono text-xs tabular-nums">
-              {formatMoney(last.c, currency)}{" "}
-              <span className={last.up ? "text-up" : "text-down"}>
-                {last.up ? "+" : ""}
-              </span>
-            </p>
-          )}
+      <div
+        className={cn(
+          "border border-line bg-[#05070b] p-1.5",
+          full && "fixed inset-0 z-50 flex flex-col p-3",
+        )}
+      >
+        <div className="mb-0.5 flex items-center justify-between gap-2 px-1">
+          <p className="text-[9px] tracking-[0.12em] text-accent uppercase">Precio · flujo</p>
+          <div className="flex items-center gap-2">
+            {last && (
+              <p className="font-mono text-xs tabular-nums text-accent">
+                {formatMoney(last.c, currency)}
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => setFull((v) => !v)}
+              className="inline-flex h-7 items-center gap-1 border border-line-strong bg-raised px-2 text-[10px] tracking-wide text-accent uppercase hover:bg-surface"
+              title={full ? "Salir (Esc)" : "Pantalla completa"}
+            >
+              {full ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+              {full ? "Salir" : "Completa"}
+            </button>
+          </div>
         </div>
-        <div className="h-56 w-full sm:h-64">
+        <div className={cn("w-full", full ? "min-h-0 flex-1" : "h-64 sm:h-80")}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid stroke="var(--color-line)" vertical={false} strokeOpacity={0.7} />
+              <defs>
+                <linearGradient id="pxFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--color-accent)" stopOpacity={0.28} />
+                  <stop offset="100%" stopColor="var(--color-accent)" stopOpacity={0} />
+                </linearGradient>
+                <filter id="lineGlow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="2.2" result="blur" />
+                  <feMerge>
+                    <feMergeNode in="blur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+              </defs>
+              <CartesianGrid stroke="var(--color-accent)" vertical strokeOpacity={0.16} />
               <XAxis dataKey="t" hide />
               <YAxis
                 yAxisId="price"
                 orientation="right"
                 domain={[yMin, yMax]}
+                allowDataOverflow
                 width={56}
-                tick={{ fill: "var(--color-subtle)", fontSize: 10 }}
+                tick={{ fill: "var(--color-accent)", fontSize: 10, opacity: 0.7 }}
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={(v) =>
                   Number(v).toLocaleString("es-US", { maximumFractionDigits: 0 })
                 }
               />
-              <YAxis yAxisId="vol" hide domain={[0, (dataMax: number) => dataMax * 3.6]} />
+              <YAxis yAxisId="vol" hide domain={[0, (dataMax: number) => dataMax * 3.2]} />
               {target && (
                 <ReferenceLine
                   yAxisId="price"
                   y={target.price}
-                  stroke="var(--color-fg)"
-                  strokeDasharray="5 4"
+                  stroke="var(--color-sma20)"
+                  strokeDasharray="4 3"
                   label={{
                     value: target.label,
-                    fill: "var(--color-fg)",
+                    fill: "var(--color-sma20)",
                     fontSize: 10,
                     position: "insideTopRight",
                   }}
@@ -306,89 +386,132 @@ export function PriceChart({
                     sma200: "SMA 200",
                   };
                   if (String(name) === "v") return [formatCompact(n), "Volumen"];
+                  if (String(name) === "bbWidth" || String(name) === "bbBase") return [];
                   return [Number.isFinite(n) ? formatMoney(n, currency) : "—", labels[String(name)] ?? String(name)];
                 }}
               />
-              <Bar yAxisId="vol" dataKey="v" maxBarSize={8}>
+              <Bar yAxisId="vol" dataKey="v" maxBarSize={10}>
                 {data.map((p) => (
-                  <Cell
-                    key={`v-${p.t}`}
-                    fill={p.up ? "var(--color-up)" : "var(--color-down)"}
-                    fillOpacity={0.28}
-                  />
+                  <Cell key={`v-${p.t}`} fill="var(--color-accent)" fillOpacity={p.up ? 0.45 : 0.18} />
                 ))}
               </Bar>
               {on.bb && (
-                <Line yAxisId="price" type="monotone" dataKey="upper" stroke="var(--color-bb)" strokeWidth={1} dot={false} strokeDasharray="4 3" />
+                <Customized component={(rest: object) => <BollingerFill {...rest} data={data} />} />
+              )}
+              <Area
+                yAxisId="price"
+                type="monotone"
+                dataKey="c"
+                stroke="none"
+                fill="url(#pxFill)"
+                baseValue={yMin}
+                isAnimationActive={false}
+              />
+              {on.bb && (
+                <Line
+                  yAxisId="price"
+                  type="monotone"
+                  dataKey="upper"
+                  stroke="var(--color-bb)"
+                  strokeWidth={2.4}
+                  dot={false}
+                  strokeDasharray="7 4"
+                />
               )}
               {on.bb && (
-                <Line yAxisId="price" type="monotone" dataKey="lower" stroke="var(--color-bb)" strokeWidth={1} dot={false} strokeDasharray="4 3" />
+                <Line
+                  yAxisId="price"
+                  type="monotone"
+                  dataKey="lower"
+                  stroke="var(--color-bb)"
+                  strokeWidth={2.4}
+                  dot={false}
+                  strokeDasharray="7 4"
+                />
+              )}
+              {on.bb && (
+                <Line
+                  yAxisId="price"
+                  type="monotone"
+                  dataKey="mid"
+                  stroke="var(--color-fg)"
+                  strokeWidth={1.2}
+                  dot={false}
+                  strokeDasharray="2 3"
+                  strokeOpacity={0.7}
+                />
               )}
               {on.sma20 && (
-                <Line yAxisId="price" type="monotone" dataKey="sma20" stroke="var(--color-sma20)" strokeWidth={1.4} dot={false} />
+                <Line yAxisId="price" type="monotone" dataKey="sma20" stroke="var(--color-sma20)" strokeWidth={2.2} dot={false} filter="url(#lineGlow)" />
               )}
               {on.sma50 && (
-                <Line yAxisId="price" type="monotone" dataKey="sma50" stroke="var(--color-sma50)" strokeWidth={1.5} dot={false} />
+                <Line yAxisId="price" type="monotone" dataKey="sma50" stroke="var(--color-sma50)" strokeWidth={2.2} dot={false} filter="url(#lineGlow)" />
               )}
               {on.sma200 && (
-                <Line yAxisId="price" type="monotone" dataKey="sma200" stroke="var(--color-sma200)" strokeWidth={1.4} dot={false} />
+                <Line yAxisId="price" type="monotone" dataKey="sma200" stroke="var(--color-sma200)" strokeWidth={2} dot={false} filter="url(#lineGlow)" />
               )}
-              <Bar
+              <Line
                 yAxisId="price"
-                dataKey="h"
-                isAnimationActive={false}
-                shape={(props: any) => <Candle {...props} yMin={yMin} yMax={yMax} />}
+                type="monotone"
+                dataKey="c"
+                stroke="var(--color-accent)"
+                strokeWidth={2.4}
+                dot={false}
+                filter="url(#lineGlow)"
               />
+              <Customized component={(rest: object) => <CandleLayer {...rest} data={data} />} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
 
-        <p className="mt-2 px-1 text-[9px] tracking-[0.12em] text-subtle uppercase">
+        <p className="mt-2 px-1 text-[9px] tracking-[0.12em] text-accent uppercase">
           RSI 14{last?.rsi != null ? ` · ${last.rsi.toFixed(1)}` : ""}
         </p>
-        <div className="h-16 w-full">
+        <div className={cn("w-full", full ? "h-28 shrink-0" : "h-20")}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="rsiFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--color-up)" stopOpacity={0.35} />
-                  <stop offset="100%" stopColor="var(--color-up)" stopOpacity={0} />
+                  <stop offset="0%" stopColor="var(--color-sma50)" stopOpacity={0.55} />
+                  <stop offset="100%" stopColor="var(--color-sma50)" stopOpacity={0} />
                 </linearGradient>
               </defs>
+              <CartesianGrid stroke="var(--color-accent)" vertical strokeOpacity={0.1} />
               <YAxis
                 domain={[0, 100]}
                 orientation="right"
                 width={56}
                 ticks={[30, 70]}
-                tick={{ fill: "var(--color-subtle)", fontSize: 10 }}
+                tick={{ fill: "var(--color-accent)", fontSize: 10, opacity: 0.7 }}
                 axisLine={false}
                 tickLine={false}
               />
               <XAxis dataKey="t" hide />
-              <ReferenceLine y={70} stroke="var(--color-down)" strokeDasharray="3 3" strokeOpacity={0.7} />
-              <ReferenceLine y={30} stroke="var(--color-up)" strokeDasharray="3 3" strokeOpacity={0.7} />
+              <ReferenceLine y={70} stroke="var(--color-down)" strokeDasharray="3 3" strokeOpacity={0.8} />
+              <ReferenceLine y={30} stroke="var(--color-up)" strokeDasharray="3 3" strokeOpacity={0.8} />
               <Tooltip contentStyle={tipStyle} formatter={(v) => [Number(v).toFixed(1), "RSI"]} />
-              <Area type="monotone" dataKey="rsi" stroke="var(--color-up)" fill="url(#rsiFill)" strokeWidth={1.6} />
+              <Area type="monotone" dataKey="rsi" stroke="var(--color-sma50)" fill="url(#rsiFill)" strokeWidth={2} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
 
-        <p className="mt-2 px-1 text-[9px] tracking-[0.12em] text-subtle uppercase">MACD</p>
-        <div className="h-20 w-full">
+        <p className="mt-2 px-1 text-[9px] tracking-[0.12em] text-accent uppercase">MACD</p>
+        <div className={cn("w-full", full ? "h-32 shrink-0" : "h-24")}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+              <CartesianGrid stroke="var(--color-accent)" vertical strokeOpacity={0.1} />
               <XAxis
                 dataKey="t"
                 tickFormatter={axisTick}
                 minTickGap={28}
-                tick={{ fill: "var(--color-subtle)", fontSize: 10 }}
+                tick={{ fill: "var(--color-accent)", fontSize: 10, opacity: 0.7 }}
                 axisLine={false}
                 tickLine={false}
               />
               <YAxis
                 orientation="right"
                 width={56}
-                tick={{ fill: "var(--color-subtle)", fontSize: 10 }}
+                tick={{ fill: "var(--color-accent)", fontSize: 10, opacity: 0.7 }}
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={(v) => Number(v).toFixed(1)}
@@ -405,17 +528,17 @@ export function PriceChart({
                   return [Number(value).toFixed(2), labels[String(name)] ?? String(name)];
                 }}
               />
-              <Bar dataKey="hist" maxBarSize={6}>
+              <Bar dataKey="hist" maxBarSize={7}>
                 {data.map((p) => (
                   <Cell
                     key={`h-${p.t}`}
-                    fill={(p.hist ?? 0) >= 0 ? "var(--color-up)" : "var(--color-down)"}
+                    fill={(p.hist ?? 0) >= 0 ? "var(--color-accent)" : "var(--color-sma50)"}
                     fillOpacity={0.85}
                   />
                 ))}
               </Bar>
-              <Line type="monotone" dataKey="macd" stroke="var(--color-macd)" strokeWidth={1.5} dot={false} />
-              <Line type="monotone" dataKey="signal" stroke="var(--color-sma50)" strokeWidth={1.3} dot={false} />
+              <Line type="monotone" dataKey="macd" stroke="var(--color-accent)" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="signal" stroke="var(--color-sma50)" strokeWidth={2} dot={false} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -521,8 +644,8 @@ function overlayMeter(id: Overlay, last?: ChartPoint) {
 function ToneBar({ pct, kind }: { pct: number; kind: "sma" | "bb" }) {
   const fill =
     kind === "bb"
-      ? "linear-gradient(90deg,#d46565 0%,#c49a48 22%,#3cbc82 50%,#c49a48 78%,#d46565 100%)"
-      : "linear-gradient(90deg,#d46565 0%,#c49a48 50%,#3cbc82 100%)";
+      ? "linear-gradient(90deg,#ff3d6e 0%,#f0c14b 22%,#1ee08a 50%,#f0c14b 78%,#ff3d6e 100%)"
+      : "linear-gradient(90deg,#ff3d6e 0%,#f0c14b 50%,#1ee08a 100%)";
   return (
     <div className="relative mt-1 h-1.5" style={{ background: fill }}>
       <span

@@ -11,7 +11,7 @@ import { OptionTicket } from "@/components/option-ticket";
 import { EquityTicket } from "@/components/equity-ticket";
 import { ScoreBar, MiniScore } from "@/components/score-bar";
 import { APP_VERSION } from "@/components/brand";
-import { analyzeTicker, scanBatch, scanEquities, type PublicAnalysis } from "@/lib/market.fns";
+import { analyzeTicker, fetchHotUniverse, scanBatch, scanEquities, type PublicAnalysis } from "@/lib/market.fns";
 import type { SparkPoint } from "@/lib/analysis";
 import { estimatePayoff } from "@/lib/estimate";
 import { actionFor, confidenceLabel, dteRisk, setupTags } from "@/lib/setup";
@@ -195,7 +195,7 @@ function Home() {
 
   async function runScan() {
     const id = ++scanId.current;
-    const pool = universe();
+    let pool = universe();
     const wide = parseSymbols(symbols).length === 0;
     setAuto(wide);
     setScanning(true);
@@ -204,14 +204,34 @@ function Home() {
     setEqHits([]);
     setOmitted([]);
     setMinis({});
-    setScanLog([`Consultando ${pool.length} símbolo(s) en el mercado…`]);
+    setScanLog(["Buscando qué se mueve hoy en opciones…"]);
     setProgress({ done: 0, total: pool.length, label: pool[0] ?? "" });
     setPicked(null);
     setPickedEq(null);
     setAnalysis(null);
 
+    if (wide && isOptions) {
+      try {
+        const hot = await fetchHotUniverse({ data: true });
+        if (id !== scanId.current) return;
+        if (hot.symbols.length) pool = hot.symbols;
+      } catch {
+        /* keep SCAN_SYMBOLS */
+      }
+    }
+    setProgress({ done: 0, total: pool.length, label: pool[0] ?? "" });
+    setScanLog(
+      wide && isOptions
+        ? [`Hoy se mueve (${pool.length}): ${pool.slice(0, 14).join(", ")}${pool.length > 14 ? "…" : ""}`]
+        : [`Consultando ${pool.length} símbolo(s) en el mercado…`],
+    );
+
     const skipped: string[] = [];
-    const lines: string[] = [`Consultando ${pool.length} símbolo(s) en el mercado…`];
+    const lines: string[] = [
+      wide && isOptions
+        ? `Hoy se mueve (${pool.length}): ${pool.slice(0, 14).join(", ")}${pool.length > 14 ? "…" : ""}`
+        : `Consultando ${pool.length} símbolo(s) en el mercado…`,
+    ];
     const foundOpt: Ranked[] = [];
     const foundEq: EquityHit[] = [];
     const spark: Record<string, SparkPoint[]> = {};
@@ -466,7 +486,7 @@ function Home() {
               placeholder={
                 mode === "etf"
                   ? "SPY, QQQ, XLK…"
-                  : "AAPL, NVDA, MSFT… vacío = large cap, +5M acciones/día"
+                  : "Vacío = las más activas HOY (no la misma lista de 30)"
               }
               rows={3}
               className="w-full border border-line bg-raised px-2 py-1.5 text-xs outline-none focus:border-accent/50"

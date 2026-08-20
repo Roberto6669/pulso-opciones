@@ -21,7 +21,7 @@ export function Shell({
 
   return (
     <div className="min-h-screen bg-bg text-fg">
-      <header className="border-b border-line bg-surface">
+      <header className="border-b border-line-strong bg-surface/90 shadow-[0_1px_0_color-mix(in_oklab,var(--color-accent)_45%,transparent)]">
         <div className="flex items-center justify-between gap-2 px-2 py-1.5 sm:px-3">
           <BrandLockup version={version} />
           {mode && onMode && <ModeSwitch mode={mode} onChange={onMode} className="hidden sm:flex" />}

@@ -23,6 +23,17 @@ function cached<T>(key: string, ttlMs: number): T | null {
   return hit.value;
 }
 
+function stale<T>(key: string, maxMs: number): T | null {
+  const hit = cache.get(key) as CacheEntry<T> | undefined;
+  if (!hit) return null;
+  if (Date.now() - hit.at > maxMs) return null;
+  return hit.value;
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 function money(raw: string | null | undefined): number {
   if (!raw) return NaN;
   return Number(String(raw).replace(/[$,+%]/g, "").replace(/,/g, "").trim());
@@ -34,23 +45,42 @@ function parseUsDate(raw: string): number {
 }
 
 async function nasdaqJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent": UA,
-      Accept: "application/json,text/plain,*/*",
-      Origin: "https://www.nasdaq.com",
-      Referer: "https://www.nasdaq.com/",
-    },
-    signal: AbortSignal.timeout(12000),
-  });
-  if (!res.ok) throw new Error(`Datos ${res.status}`);
-  return (await res.json()) as T;
+  let last = "Nasdaq sin respuesta";
+  for (let i = 0; i < 3; i += 1) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": UA,
+          Accept: "application/json,text/plain,*/*",
+          "Accept-Language": "en-US,en;q=0.9",
+          Origin: "https://www.nasdaq.com",
+          Referer: "https://www.nasdaq.com/",
+        },
+        signal: AbortSignal.timeout(12000),
+      });
+      if (res.status === 429 || res.status >= 500) {
+        last = `Nasdaq ${res.status}`;
+        await sleep(400 * (i + 1));
+        continue;
+      }
+      if (!res.ok) throw new Error(`Datos ${res.status}`);
+      return (await res.json()) as T;
+    } catch (error) {
+      last = error instanceof Error ? error.message : last;
+      await sleep(400 * (i + 1));
+    }
+  }
+  try {
+    return await curlJson<T>(url);
+  } catch {
+    throw new Error(last);
+  }
 }
 
 async function curlJson<T>(url: string): Promise<T> {
   const { stdout } = await execFileAsync(
     "curl",
-    ["-sS", "-A", UA, "-H", "Accept: application/json", "--max-time", "12", url],
+    ["-sS", "-A", UA, "-H", "Accept: application/json", "--compressed", "--max-time", "12", url],
     { maxBuffer: 5_000_000 },
   );
   return JSON.parse(stdout) as T;
@@ -532,26 +562,106 @@ function mapLeg(side: "call" | "put", row: YahooOption, expUnix: number): LiveOp
   };
 }
 
-export async function fetchOptionChain(
-  symbol: string,
-  dteMin: number,
-  dteMax: number,
-): Promise<LiveChain> {
-  const sym = symbol.toUpperCase();
-  const key = `opt:${sym}:${dteMin}:${dteMax}`;
-  const hit = cached<LiveChain>(key, 60_000);
-  if (hit) return hit;
+function parseOcc(root: string, occ: string) {
+  const u = occ.toUpperCase();
+  const r = root.toUpperCase();
+  const rest = u.startsWith(r) ? u.slice(r.length) : u.replace(/^[A-Z]+/, "");
+  const m = rest.match(/^(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/);
+  if (!m) return null;
+  const unix = Math.floor(Date.UTC(2000 + Number(m[1]), Number(m[2]) - 1, Number(m[3])) / 1000);
+  return {
+    unix,
+    iso: unixToIso(unix),
+    side: (m[4] === "P" ? "put" : "call") as "call" | "put",
+    strike: Number(m[5]) / 1000,
+  };
+}
 
-  try {
-    return remember(key, await fetchNasdaqOptions(sym, dteMin, dteMax));
-  } catch {
-    /* yahoo next */
-  }
+type CboeQuote = {
+  data?: {
+    current_price?: number;
+    close?: number;
+    last?: number;
+    options?: Array<{
+      option?: string;
+      bid?: number;
+      ask?: number;
+      last_trade_price?: number;
+      last?: number;
+      volume?: number;
+      open_interest?: number;
+      iv?: number;
+      implied_volatility?: number;
+    }>;
+  };
+};
 
-  const first = await curlJson<YahooOptions>(
-    `https://query1.finance.yahoo.com/v7/finance/options/${encodeURIComponent(sym)}`,
+async function fetchCboeOptions(sym: string, dteMin: number, dteMax: number): Promise<LiveChain> {
+  const body = await curlJson<CboeQuote>(
+    `https://cdn.cboe.com/api/global/delayed_quotes/options/${encodeURIComponent(sym)}.json`,
   );
-  const head = first.optionChain?.result?.[0];
+  const rows = body.data?.options ?? [];
+  if (!rows.length) throw new Error("CBOE cadena vacía");
+  const now = Date.now() / 1000;
+  const minDays = Math.max(0.75, dteMin - 0.4);
+  const calls: LiveOption[] = [];
+  const puts: LiveOption[] = [];
+  const expiries = new Set<number>();
+  for (const row of rows) {
+    if (!row.option) continue;
+    const occ = parseOcc(sym, row.option);
+    if (!occ) continue;
+    const days = (occ.unix - now) / 86400;
+    if (days < minDays || days > dteMax + 0.6) continue;
+    expiries.add(occ.unix);
+    const bid = Number(row.bid) || 0;
+    const ask = Number(row.ask) || 0;
+    const last = Number(row.last_trade_price ?? row.last) || 0;
+    if (!(bid > 0 || ask > 0 || last > 0)) continue;
+    const leg: LiveOption = {
+      side: occ.side,
+      strike: occ.strike,
+      bid: bid > 0 ? bid : last,
+      ask: ask > 0 ? ask : last,
+      last: last > 0 ? last : (bid + ask) / 2,
+      volume: Number(row.volume) || 0,
+      openInterest: Number(row.open_interest) || 0,
+      iv: Number(row.iv ?? row.implied_volatility) || 0,
+      expiration: occ.iso,
+      expirationUnix: occ.unix,
+    };
+    (occ.side === "call" ? calls : puts).push(leg);
+  }
+  if (!calls.length && !puts.length) throw new Error("CBOE sin contratos en rango");
+  const wanted = pickExpiration([...expiries], dteMin, dteMax);
+  const price = Number(body.data?.current_price ?? body.data?.close ?? body.data?.last) || 0;
+  return {
+    symbol: sym,
+    name: sym,
+    price,
+    expiration: unixToIso(wanted),
+    expirationUnix: wanted,
+    dte: Math.max(1, Math.round((wanted - now) / 86400)),
+    calls,
+    puts,
+  };
+}
+
+async function fetchYahooOptions(sym: string, dteMin: number, dteMax: number): Promise<LiveChain> {
+  const urls = [
+    `https://query1.finance.yahoo.com/v7/finance/options/${encodeURIComponent(sym)}`,
+    `https://query2.finance.yahoo.com/v7/finance/options/${encodeURIComponent(sym)}`,
+  ];
+  let first: YahooOptions | null = null;
+  for (const url of urls) {
+    try {
+      first = await curlJson<YahooOptions>(url);
+      if (first.optionChain?.result?.[0]?.expirationDates?.length) break;
+    } catch {
+      first = null;
+    }
+  }
+  const head = first?.optionChain?.result?.[0];
   const dates = head?.expirationDates ?? [];
   if (!head || dates.length === 0) throw new Error("Sin cadena");
   const wanted = pickExpiration(dates, dteMin, dteMax);
@@ -573,7 +683,7 @@ export async function fetchOptionChain(
   if (calls.length + puts.length === 0) throw new Error("Cadena vacía");
   const price = Number(head.quote?.regularMarketPrice) || 0;
   const now = Date.now() / 1000;
-  return remember(key, {
+  return {
     symbol: sym,
     name: head.quote?.shortName || sym,
     price,
@@ -582,7 +692,79 @@ export async function fetchOptionChain(
     dte: Math.max(0, Math.round((expUnix - now) / 86400)),
     calls,
     puts,
-  });
+  };
+}
+
+export async function fetchOptionChain(
+  symbol: string,
+  dteMin: number,
+  dteMax: number,
+): Promise<LiveChain> {
+  const sym = symbol.toUpperCase();
+  const key = `opt:${sym}:${dteMin}:${dteMax}`;
+  const fresh = cached<LiveChain>(key, 90_000);
+  if (fresh) return fresh;
+
+  const loaders = [fetchNasdaqOptions, fetchCboeOptions, fetchYahooOptions];
+  for (const load of loaders) {
+    try {
+      return remember(key, await load(sym, dteMin, dteMax));
+    } catch {
+      /* next source */
+    }
+  }
+
+  const old = stale<LiveChain>(key, 20 * 60_000);
+  if (old) return old;
+  throw new Error("Sin cadena");
+}
+
+export async function fetchHotUnderlyings(): Promise<string[]> {
+  const hit = cached<string[]>("hot-underlyings", 180_000);
+  if (hit?.length) return hit;
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const skip = new Set(["SPX", "NDX", "RUT", "VIX", "DJX", "OEX", "XSP", "SPCX"]);
+
+  const push = (raw: string) => {
+    const s = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (!s || s.length > 5 || skip.has(s) || seen.has(s)) return;
+    if (/^[A-Z]+[MN]$/.test(s) && s.length >= 5) return;
+    seen.add(s);
+    out.push(s);
+  };
+
+  try {
+    const { stdout } = await execFileAsync(
+      "curl",
+      ["-sS", "-A", UA, "--compressed", "--max-time", "15", "https://finance.yahoo.com/markets/options/most-active/"],
+      { maxBuffer: 3_000_000 },
+    );
+    for (const m of stdout.matchAll(/\b([A-Z]{1,6})\d{6}[CP]\d{8}\b/g)) push(m[1]);
+  } catch {
+    /* nasdaq next */
+  }
+
+  for (const core of ["SPY", "QQQ", "IWM", "NVDA", "TSLA", "AAPL", "AMD", "META", "AMZN"]) push(core);
+
+  try {
+    const body = await nasdaqJson<{
+      data?: { rows?: Array<{ symbol?: string; marketCap?: string; volume?: string }> };
+    }>("https://api.nasdaq.com/api/screener/stocks?tableonly=true&limit=100&offset=0&download=true");
+    const scored = (body.data?.rows ?? [])
+      .map((row) => {
+        const cap = Number(String(row.marketCap ?? "").replace(/[^0-9.]/g, "")) || 0;
+        const vol = Number(String(row.volume ?? "").replace(/[^0-9.]/g, "")) || 0;
+        return { symbol: row.symbol ?? "", cap, vol };
+      })
+      .filter((row) => row.symbol && row.cap >= 8_000_000_000 && row.cap <= 10_000_000_000_000 && row.vol >= 8_000_000)
+      .sort((a, b) => b.vol - a.vol);
+    for (const row of scored) push(row.symbol);
+  } catch {
+    /* keep */
+  }
+
+  return remember("hot-underlyings", out.slice(0, 40));
 }
 
 export async function searchSymbols(q: string): Promise<SearchHit[]> {
