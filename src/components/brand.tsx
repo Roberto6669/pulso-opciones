@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 
-export const APP_VERSION = "WEB5.0 - V3.31";
+export const APP_VERSION = "WEB5.0 - V3.32";
 export const BRAND_NAME = "Roberto Escobar Citty";
 export const PRODUCT_NAME = "Pulso Options Analyzer";
 export const BRAND_ROLE = "Regional Vice President · Options Analysis Dashboard";
