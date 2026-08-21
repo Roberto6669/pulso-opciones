@@ -1,188 +1,197 @@
-# Pulso Options Analyzer — Biblia del proyecto
+# Pulso Options Analyzer — Biblia del Project
 
-Úsala para **Grok Projects**, Claude, o un agente en un año.  
-Si solo puedes pegar un archivo, pega **este**.
+Pega **este archivo** en un Grok Project. Si el agente solo puede leer una cosa, que sea esta.
 
 | | |
 |---|---|
 | Producto | Pulso Options Analyzer |
-| Versión actual | **WEB5.0 - V3.24** (`src/components/brand.tsx` → `APP_VERSION`) |
+| Versión | **WEB5.0 - V3.31** (`src/components/brand.tsx` → `APP_VERSION`) |
 | Dueño | Roberto Escobar Citty |
 | Repo | https://github.com/Roberto6669/pulso-opciones |
-| Rama | `main` · tag `v3.24` |
+| Rama / tag | `main` · `v3.31` |
 | Disco Mac Mini | `/Users/robertoescobar/Library/Mobile Documents/com~apple~CloudDocs/__DATA/_AI_Grok/opciones_analizador_WEB5.0` |
-| Preview Grok | sandbox `/workspace`, puerto **8080** |
-| Host producción | Mac Mini M1 16GB · Docker · Tailscale |
-| Sitio viejo (NO tocar) | WEB4.0 → `opciones-w4.tailac6c74.ts.net` (sigue vivo a propósito) |
+| Preview Grok | sandbox `/workspace`, **0.0.0.0:8080** |
+| Host | Mac Mini M1 16GB · Docker · Tailscale |
+| WEB4 (NO TOCAR) | `https://opciones-w4.tailac6c74.ts.net` — sigue vivo a propósito |
 
 ---
 
-## 1. Cómo se trabaja (dos mundos)
+## 0. Cómo crear el Grok Project (Roberto)
 
-```
-Grok (este chat)          Mac Mini de Roberto
-─────────────────         ────────────────────
-/workspace  (sandbox)     iCloud DEST + Docker
-edita, preview 8080       clona GitHub, rebuild, Tailscale
-NO tiene el Mac           NO edita Grok
-```
+En grok.com → **Projects** → **New**:
 
-1. **Programar** aquí en Grok. El preview de la derecha es la verdad del código.
-2. **Versionar** `APP_VERSION` en `src/components/brand.tsx` + tag GitHub.
-3. **Bajar** al Mac con `git clone` / `cp` al DEST de iCloud.
-4. **Correr** con Docker (Claude ya conoce `ports.json` / `CLAUDE.md` del Mini). WEB5 es independiente de WEB4.
+1. **Nombre:** `Pulso WEB5.0`
+2. **Instructions:** pega la sección **12** de este archivo (el recuadro).
+3. **Archivos:** sube este `PROJECT.md`. Si cabe, también `src/components/brand.tsx` y `src/routes/index.tsx` (opcional; el repo es la fuente).
+4. Cada chat nuevo **dentro de ese Project** hereda las instructions. No hace falta re-explicar el producto.
 
-Nunca abrir un `index.html` suelto: eso fue un prototipo v1.0. El app es **TanStack Start + React**.
-
-Nunca borrar WEB4 para “actualizar” WEB5.
+Si el sandbox del chat está vacío: clonar el repo a `/workspace`, `npm install`, `npm run dev` en **8080**.
 
 ---
 
-## 2. Qué es el producto (en una frase)
+## 1. Dos mundos (no mezclar)
+
+```
+Grok (chat / Project)              Mac Mini de Roberto
+─────────────────────              ────────────────────
+/workspace  sandbox                iCloud DEST + Docker
+edita + preview 8080               git clone, rebuild, Tailscale
+NO tiene el Mac                    NO edita Grok
+```
+
+1. Programar en Grok. El preview de la derecha es la verdad.
+2. Subir versión: `APP_VERSION` + tag GitHub `vX.Y`.
+3. Bajar al DEST de iCloud con `git clone` (comandos abajo).
+4. Rebuild Docker. WEB5 **independiente** de WEB4.
+
+Nunca abrir un `index.html` suelto (prototipo v1.0). El app es **TanStack Start + React**.
+Nunca apagar WEB4 para “actualizar” WEB5.
+
+---
+
+## 2. Qué es (una frase)
 
 Escáner de **opciones** (default), también **acciones** y **ETF**.  
-Tú pones **presupuesto** y **días hasta vencimiento**. El sistema busca contratos que quepan, te dice si el **subyacente** está bien y si **ese boleto** vale la pena, en español de calle.
+Presupuesto + días hasta vencimiento → contratos que caben, si **la acción** está bien y si **ese boleto** vale la pena. Español de calle.
 
-No es consejo financiero. No hay broker conectado. Los precios salen de **Nasdaq / Yahoo** (públicos, gratis).
+No es consejo. No hay broker conectado. Precios: **Nasdaq → CBOE delayed → Yahoo** (gratis).  
+IBKR: Roberto **sí tiene cuenta**. El API es gratis con Gateway en el Mini + OPRA. **Aún no está cableado**; el preview de Grok no puede hablar con localhost:5000.
 
 ---
 
 ## 3. Lo que el usuario ve
 
 ### Header
-Logo **RE** + **ROBERTO ESCOBAR CITTY** + versión `WEB5.0 - V3.24`.  
-Cinta de índices (SPY, Dow, Nasdaq, Russell, VIX) con minigráfica.
+Monograma **RE** + **ROBERTO ESCOBAR CITTY** + badge `WEB5.0 - V3.31`.  
+Cinta de índices SPY / Dow / Nasdaq / Russell / VIX + sparkline.  
+Modo: **Opciones** (default) / Acciones / ETF.
+
+### Look (V3.27+)
+Referencia: iStock multi-monitor (fondo negro, cian neón, magenta, oro).  
+Tokens en `src/styles.css`: `--color-bg #05070b`, `--color-accent #00e5d4`, SMA20 oro, SMA50 magenta.  
+**Cero radios.** Rejilla cian sutil. No look infantil / redondeado.
 
 ### Izquierda — filtros
-- Presupuesto chips: $25, $50, $100, $250, $500, $1,000
-- DTE: ≤7 días / 14 / 21–45 + inputs min/max
+- Presupuesto: $25 $50 $100 $250 $500 $1,000
+- DTE: ≤7 / 14 / 21–45 + min/max
 - Botón grande **Próximo viernes**
 - Lado: AUTO / CALLS / PUTS
-- Símbolos vacíos = auto-scan large cap
-- Comisión IBKR (texto): $0.65/contrato + ~$0.03 bolsa, mín. $1
+- Símbolos **vacío** = universo **del día** (más activas), no una lista fija de 30
+- Comisión IBKR en texto: $0.65/contrato + ~$0.03, mín. $1
 
-El aviso rojo **“1–7 días agresivo”** usa **`dteMax` del filtro**, no el DTE del contrato abierto. Si pulsas 14 días, el aviso se apaga.
+Aviso rojo “1–7 días agresivo” usa **`dteMax` del filtro**, no el DTE de la fila abierta.
 
 ### Centro
-- Tabla de contratos (símbolo, minichart+Bollinger, señal, score, strike, coste, spread, DTE, SÍ/MIRAR/NO)
-- Al elegir fila: score, gráfica (velas, SMA 20/50/200, Bollinger, RSI, MACD)
-- Cajas SMA/Bollinger: **MALO / BUENO** y cuánto % falta
-- **¿Compro esto?** lenguaje claro + gráfica “hoy vs raya verde (break-even)” + cómo venía la prima
-- Panel 1-2-3: Invertiste | Si llega la tesis | Promedio del modelo
+Tabla: símbolo, minichart+BB, señal, score, strike, coste, spread, DTE, SÍ/MIRAR/NO.  
+Al elegir: score, gráfica (velas + área cian + SMA 20/50/200 + Bollinger canal + RSI + MACD).  
+Botón **Completa** / **Salir** (Esc) en la gráfica.  
+Cajas SMA/BB: MALO / BUENO y % que falta.  
+**¿Compro esto?** acción ≠ boleto + gráfica al break-even.  
+Panel 1-2-3: Invertiste | Si llega la tesis | Promedio del modelo.
 
 ### Derecha — métricas
-- Técnico: RSI, SMA, Bollinger
-- Dinero:
-  - **Amarillo (`text-wait`)** = gasto (prima, comisión IBKR)
-  - **Rojo** = pérdida
-  - **Verde** = ganancia
+- Amarillo (`text-wait`) = **gasto** (prima, comisión)
+- Rojo = pérdida
+- Verde = ganancia
 
 ### Mobile
-Ticket pegajoso arriba. No copiar el layout desktop 1:1.
+Ticket pegajoso arriba. Más info visible, menos scroll.
 
 ---
 
 ## 4. Cómo funciona por dentro
 
 ### Stack
-TanStack Start · React · Tailwind · Recharts · server functions (`createServerFn`) · Vite en **8080**.
+TanStack Start · React · Tailwind v4 · Recharts · `createServerFn` · Vite **8080**.
 
-### Datos de mercado
-`src/lib/yahoo.server.ts`
+### Datos — `src/lib/yahoo.server.ts`
 
-- Gráficas: Yahoo chart
-- Cadenas: **Nasdaq option-chain** primero, Yahoo de respaldo
-- **Nunca** usar vencimientos de < ~0.75 días (0-DTE muerto después del close)
-- En rango 1–7 DTE junta **varios** vencimientos, no solo uno
-- Si Nasdaq falla un símbolo, se omite y se loguea; el resto sigue
+Cadenas (`fetchOptionChain`), en este orden:
 
-### Escaneo
-`src/lib/market.fns.ts` → `scanBatch` (de a 3 símbolos)
+1. Nasdaq option-chain (3 reintentos + curl)
+2. CBOE delayed `cdn.cboe.com/api/global/delayed_quotes/options/{SYM}.json`
+3. Yahoo query1 / query2
+4. Última cadena buena hasta **20 min** (stale)
 
-Vacío de símbolos + opciones:
+Nunca vencimientos < ~0.75 días (0-DTE muerto).  
+En 1–7 DTE junta **varios** vencimientos.
 
-- Universo `SCAN_SYMBOLS` en `src/lib/scan.ts` (large caps / ETFs líquidos)
-- Omite si volumen medio 20d < **1.5M**
-- `pickLegs`: cabe en presupuesto **+ $1 de comisión**, strike **más cerca** del spot (no el más farol), spread razonable
+Auto-scan (`fetchHotUnderlyings` / `fetchHotUniverse`):
 
-Acciones/ETF: `scanEquities` + `STOCK_SYMBOLS` / `ETF_SYMBOLS` en `src/lib/equity.ts`.
+- OCC más activas de Yahoo (si el HTML responde)
+- Nasdaq download: cap ≥ $8B, volumen ≥ 8M, top del día
+- Siempre mete SPY QQQ IWM NVDA TSLA AAPL AMD META AMZN
+- Máx ~40 tickers. El log dice **“Hoy se mueve: …”**
 
-### Score del contrato
-`scoreContract` en `src/lib/scan.ts`
+`SCAN_SYMBOLS` en `scan.ts` es **respaldo**, no el universo diario.
 
-`liq + técnico + alineación de dirección + cercanía al dinero − penalización de spread`.
+### Escaneo — `src/lib/market.fns.ts`
 
-**Score alto ≠ cómpralo.** El score es setup del subyacente + liquidez. La decisión de compra es otra.
+`scanBatch` de a 3 símbolos. Omite si vol. 20d < **1.5M**.  
+`pickLegs`: cabe presupuesto **+ comisión**, strike **cerca** del spot, spread ok.
 
-### Estimado
-`src/lib/estimate.ts` → `estimatePayoff`
+Acciones/ETF: `scanEquities` + `STOCK_SYMBOLS` / `ETF_SYMBOLS` en `equity.ts`.
 
-- Volatilidad: mezcla IV (si viene) + HV de log-returns
-- Drift histórico recortado
-- **Break-even** incluye comisión por acción
-- `pProfit` = P(el spot cruce el BE) vía Black-Scholes / N(·)
-- `expectedPnl` resta **ida y vuelta IBKR**
-- `targetPnl` (“si llega la tesis”) resta **solo entrada** (vence)
-- `maxLoss` = prima + comisión de abrir
+### Score — `scoreContract` en `scan.ts`
 
-### Comisión
-`src/lib/fees.ts` — IBKR Pro Fixed EE.UU.
+Liquidez + técnico + dirección − spread.  
+**Score alto ≠ cómpralo.** Eso es el subyacente. La compra es `actionFor`.
 
-- Opciones: $0.65 + $0.03 · mín. $1/orden
-- Acciones: $0.005/acción · mín. $1 · ida y vuelta
+### Estimado — `estimate.ts`
 
-### ¿Compro esto? (SÍ / MIRAR / NO)
-`src/lib/setup.ts` → `actionFor` + UI `src/components/plain-why.tsx`
+IV+HV, BE con comisión, `pProfit` vía N(·), `expectedPnl` resta round-trip IBKR, `targetPnl` solo entrada, `maxLoss` = prima + abrir.
 
-Dos cosas distintas:
+### Comisión — `fees.ts`
 
-1. **La acción** (SMA/Bollinger) puede ir bien  
-2. **El boleto** pide que el precio llegue al BE en N días  
+IBKR Pro Fixed US: opciones $0.65+$0.03 mín $1; acciones $0.005 mín $1; round-trip.
 
-Regla:
+### SÍ / MIRAR / NO — `setup.ts` + `plain-why.tsx`
 
-- **NO** si el salto > ~2× el movimiento típico, o P < 9%
-- **SÍ** si el salto cabe en un día/periodo normal y el técnico va a favor
+1. La **acción** (SMA/BB) puede ir bien.  
+2. El **boleto** pide que el spot llegue al BE en N días.
+
+- **NO** si el salto > ~2× movimiento típico o P < 9%
+- **SÍ** si el salto cabe en 1σ y el técnico a favor
 - **MIRAR** en el medio
 
-Con **$25 y 2 días** casi todo es lotería. Eso es correcto, no un bug.  
-Si no hay SÍ: subir presupuesto o días, no “suavizar” el modelo a lo loco.
+**$25 y 2 días** casi siempre lotería. Correcto. No suavizar el modelo.
 
-### SMA / Bollinger
-`src/components/price-chart.tsx`
+### Gráficas — `price-chart.tsx`
 
-- SMA: encima = bueno, debajo = malo. Decir **$ de la media** y **% que falta**.
-- Bollinger: medio = bueno, pegado a una banda = estirado (malo).
+Área cian + glow, SMA gruesas, Bollinger = **canal entre bandas** (Customized path), velas con **la misma escala Y** (no Bar en el eje de precio: eso pegaba las medias arriba).  
+Fullscreen: estado `full`, `fixed inset-0`, Esc.  
+Bug ya arreglado V3.31: Area/Bar forzaban dominio a 0.
 
 ---
 
 ## 5. Archivos que importan
 
 ```
-src/routes/index.tsx          UI principal, scan, tabla, filtros
-src/components/brand.tsx      APP_VERSION, logo RE, nombre
-src/components/plain-why.tsx  “¿Compro esto?”
-src/components/price-chart.tsx velas + SMA/BB + leyenda MALO/BUENO
-src/components/estimate-panel.tsx  Invertiste / tesis / promedio
-src/components/option-ticket.tsx   mobile
-src/components/market-strip.tsx    índices
-src/lib/yahoo.server.ts       fetch live
-src/lib/market.fns.ts         scanBatch / pickLegs / índices
-src/lib/scan.ts               universo, score, nextFriday, dte
-src/lib/estimate.ts           P&L, BE, pProfit, backtest
-src/lib/setup.ts              actionFor, tesis
-src/lib/fees.ts               IBKR
-src/lib/equity.ts             acciones/ETF
-src/lib/analysis.ts           RSI, MACD, SMA, BB, sparkline
-PROJECT.md                    este archivo
-VERSION                       WEB5.0 - V3.24
+src/routes/index.tsx           UI, scan, tabla, filtros
+src/components/brand.tsx       APP_VERSION, RE, nombre
+src/components/plain-why.tsx   ¿Compro esto?
+src/components/price-chart.tsx velas, SMA, BB, RSI, MACD, Completa
+src/components/estimate-panel.tsx
+src/components/option-ticket.tsx  mobile
+src/components/market-strip.tsx
+src/components/shell.tsx       header
+src/styles.css                 tokens (negro/cian)
+src/lib/yahoo.server.ts        Nasdaq / CBOE / Yahoo / hot universe
+src/lib/market.fns.ts          scanBatch, fetchHotUniverse
+src/lib/scan.ts                score, nextFriday, SCAN_SYMBOLS respaldo
+src/lib/estimate.ts
+src/lib/setup.ts
+src/lib/fees.ts
+src/lib/equity.ts
+src/lib/analysis.ts            RSI MACD SMA BB
+PROJECT.md                     este archivo
 ```
 
-**No hay `index.html` en la raíz.** Si aparece, es basura v1.0: bórralo.
+**No hay `index.html` de app en la raíz.** Si aparece, bórralo (`rm -f`).
 
 ---
 
-## 6. GitHub — bajar (Mac)
+## 6. Bajar al Mac (funciona)
 
 Repo **público**. Tag = versión.
 
@@ -190,116 +199,111 @@ Repo **público**. Tag = versión.
 DEST="/Users/robertoescobar/Library/Mobile Documents/com~apple~CloudDocs/__DATA/_AI_Grok/opciones_analizador_WEB5.0"
 mkdir -p "$DEST"
 rm -rf /tmp/pulso-opciones
-git clone --branch v3.24 --depth 1 https://github.com/Roberto6669/pulso-opciones.git /tmp/pulso-opciones
+git clone --branch v3.31 --depth 1 https://github.com/Roberto6669/pulso-opciones.git /tmp/pulso-opciones
 cp -R /tmp/pulso-opciones/. "$DEST"
 rm -f "$DEST/index.html"
 grep APP_VERSION "$DEST/src/components/brand.tsx"
 ```
 
-Debe decir `WEB5.0 - V3.24`.
+Debe decir `WEB5.0 - V3.31`. Luego **rebuild Docker**. Copiar no actualiza el contenedor que ya corre.
 
-`cp -R` **no borra** archivos viejos. Por eso el `rm -f index.html`.
-
-No uses `curl` zip si el repo vuelve a ser privado (baja 9 bytes = `Not Found`).
-
-Luego **rebuild Docker**. Copiar archivos no cambia el contenedor que ya corre.
+`cp -R` no borra leftovers → por eso `rm -f index.html`.  
+No `curl` zip si el repo está privado (9 bytes = Not Found).  
+En zsh **no pegues comentarios `#`** (rompe el comando).
 
 ---
 
-## 7. GitHub — subir (agente en Grok)
+## 7. Subir desde Grok (agente)
 
-Desde el sandbox, el flujo que ya funciona:
-
-1. Clonar `Roberto6669/pulso-opciones` a `/tmp/pulso-push` (si no está).
-2. Copiar `/workspace/src` → repo.
-3. Actualizar `VERSION` y `APP_VERSION`.
-4. **No** commitear un `index.html` estático v1.0.
-5. `git commit` + `git tag -f vX.Y` + `git push origin main` + `git push origin vX.Y`
-6. `gh release create`
-
-Cuenta GitHub: **Roberto6669**.
+1. `/tmp/pulso-push` = clone de `Roberto6669/pulso-opciones`
+2. Copiar `/workspace/src` → repo (+ `PROJECT.md`, `VERSION`)
+3. Bump `APP_VERSION` en `brand.tsx`
+4. **No** commitear `index.html` v1.0
+5. `git commit` + `git tag -f vX.Y` + push `main` + push tag + `gh release create`
+6. GitHub: **Roberto6669**
 
 ---
 
-## 8. Hosting Mac Mini (reglas de Roberto)
+## 8. Hosting Mac Mini
 
-Leer siempre su `CLAUDE.md` + `ports.json` (fuente de puertos).
+Reglas en su `CLAUDE.md` + `ports.json` (Claude arma el Docker).
 
-- Cada proyecto = **su Docker**, independiente
-- WEB4.0 (`opciones-w4`, puerto 10101) **no se apaga**
-- WEB5.0 necesita **puerto nuevo** (no 10101). Elegir de `free_suggested` en `ports.json` y registrarlo
-- Tailscale: hostname propio tipo `opciones-w5.tailac6c74.ts.net`
-- launchd / compose como el resto; **no** `tailscale funnel` suelto
-- Docker lo arma Claude (conoce las reglas). Grok programa el analizador.
-
-Prompt actual de Terminal: a veces está en `opciones-w5` — esa carpeta Docker no es el DEST de iCloud.
+- 1 proyecto = 1 Docker
+- WEB4 puerto **10101** no se apaga
+- WEB5 = **puerto nuevo** de `free_suggested`
+- Tailscale hostname propio (`opciones-w5…`)
+- IBKR Client Portal Gateway (cuando se cablee): Java en el host, Docker → `localhost:5000`, una sola sesión IBKR (TWS y Gateway no a la vez). OPRA ~$1.50/mes para opciones en vivo.
 
 ---
 
-## 9. Marca y UX (no romper)
+## 9. Marca / UX (no romper)
 
-- Header como WEB4: monograma **RE**, nombre completo, versión
-- Oscuro, terminal, **sin esquinas redondas** grandes / look infantil
-- Montos a **2 decimales**
-- Español claro. Evitar jerga sin traducir (subyacente → la acción; contrato → boleto)
-- Separar siempre: **la acción va bien** ≠ **compra este weekly**
-- iPhone: más info arriba, menos scroll
+- Header WEB4-like: **RE** + nombre completo + versión
+- Oscuro terminal, **sin esquinas redondas**
+- Montos **2 decimales**
+- Español claro (subyacente → la acción; contrato → boleto)
+- Acción va bien ≠ compra este weekly
+- iPhone: info arriba
 
 ---
 
-## 10. Errores que ya cometimos (no repetir)
+## 10. Errores ya cometidos (no repetir)
 
-| Síntoma | Causa real | Arreglo |
+| Síntoma | Causa | Arreglo |
 |---|---|---|
-| GitHub “baja v1.0” | `index.html` prototipo en la raíz | Borrarlo. El app es `src/` |
-| `curl` zip = 9 bytes | Repo privado | `git clone` autenticado, o repo público |
-| Carpeta DEST vacía | `rm -rf "$DEST"` | Clonar a `/tmp` y `cp -R` |
-| Sigue v1.0 tras copiar | `cp` no borra leftover + Docker viejo | `rm index.html` + rebuild |
-| Cero resultados | Escaneo agarraba 0-DTE muerto | Ignorar < 0.75 días; varios vencimientos 1–7 |
-| Todo NO | $25 + 2 DTE es lotería + filtro duro | Strikes más cerca; SÍ si el salto cabe en 1σ |
-| 14 días no quita el rojo | Aviso usaba DTE del contrato, no el filtro | Usar `dteMax` |
-| EVITAR con SMA verde | Se mezclaba técnico y boleto | Dos cajas: acción vs boleto |
-| P&L de $19 → $45,000 | Estimado fantasioso | BS + HV + tesis ≠ promedio |
-| Mini BB invisible | `every()` con nulls | Filtrar puntos con bandas |
-| Descarga al iCloud | Downloads vacío, `#` rompe zsh | git clone, sin comentarios `#` |
+| GitHub baja v1.0 | `index.html` prototipo | Borrarlo. App = `src/` |
+| curl zip 9 bytes | repo privado | `git clone` o repo público |
+| DEST vacío | `rm -rf "$DEST"` | clone a `/tmp` + `cp -R` |
+| Sigue v1.0 | leftover + Docker viejo | `rm index.html` + rebuild |
+| Siempre los mismos tickers | lista fija de 30 | universo del día V3.25 |
+| Cero resultados | 0-DTE muerto | ignorar < 0.75d; varios venc. 1–7 |
+| Todo NO | $25 + 2 DTE lotería | strikes cerca; no falsear |
+| 14d no quita el rojo | aviso usaba DTE de fila | usar `dteMax` |
+| EVITAR con SMA verde | técnico mezclado con boleto | dos cajas |
+| $19 → $45,000 | estimado fantasioso | BS + HV; tesis ≠ promedio |
+| Medias arriba, velas en medio | Area/Bar dominio 0 | Customized + `baseValue={yMin}` |
+| `#` en Terminal zsh | comentario no es bash | comandos sin `#` |
 
 ---
 
-## 11. Cómo retomar en un año (Grok Project)
+## 11. IBKR (pendiente, no olvidar)
 
-1. Crear Project **Pulso WEB5.0**.
-2. Adjuntar **este `PROJECT.md`** y, si cabe, clonar el repo.
-3. Pegar el prompt de la sección 12.
-4. Confirmar `APP_VERSION` en GitHub vs `brand.tsx`.
-5. Desarrollar en Grok (preview 8080).
-6. Tag nuevo, bajar al DEST, rebuild Docker. WEB4 no se toca.
-
-Si el sandbox de Grok está vacío: clonar `https://github.com/Roberto6669/pulso-opciones` a `/workspace` y `npm install && npm run dev` en 8080.
+- Cuenta **sí**. API **gratis**. Retail = Client Portal Gateway en el Mini (login manual).
+- OAuth sin Gateway = institucional, no aplica.
+- Dato delayed gratis. Opciones en vivo = **OPRA**.
+- Preview Grok **no** usa IBKR. Cuando Docker WEB5 esté estable, adapter con `IBKR_GATEWAY_URL`, Nasdaq/CBOE de respaldo.
 
 ---
 
-## 12. Prompt para el Project (copiar y pegar)
+## 12. Instructions del Grok Project (copiar TAL CUAL)
 
 ```
 Eres Grok Build. Este Project es Pulso Options Analyzer (WEB5.0).
 
-Lee primero PROJECT.md (biblia). Código en GitHub:
-https://github.com/Roberto6669/pulso-opciones  (main, última tag = versión).
+Lee primero PROJECT.md. Código: https://github.com/Roberto6669/pulso-opciones
+(main; última tag = versión visible). Versión actual: WEB5.0 - V3.31.
 
-Dueño: Roberto Escobar Citty. Mac Mini M1: Docker + Tailscale. WEB4.0
-(opciones-w4) sigue vivo; WEB5 es independiente. Disco:
+Dueño: Roberto Escobar Citty.
+Mac Mini M1 16GB: cada app en su Docker + Tailscale.
+WEB4.0 (opciones-w4.tailac6c74.ts.net, puerto 10101) SIGUE VIVO. No apagarlo.
+Disco WEB5:
 /Users/robertoescobar/Library/Mobile Documents/com~apple~CloudDocs/__DATA/_AI_Grok/opciones_analizador_WEB5.0
 
-Qué es: escáner de opciones (default) / acciones / ETF por presupuesto y DTE.
-Datos Nasdaq+Yahoo. Comisión IBKR. No es consejo ni broker.
+Qué es: escáner de opciones (default) / acciones / ETF. Presupuesto + DTE.
+Datos: Nasdaq (reintentos) → CBOE delayed → Yahoo → caché 20 min.
+Auto-scan vacío = universo DEL DÍA (volumen/opciones activas), no 30 fijos.
+Comisión IBKR en estimados. No es consejo ni broker.
+IBKR API: Roberto tiene cuenta; Gateway en Mini pendiente de cablear. No llamar IBKR desde el sandbox de Grok.
 
-Reglas de producto:
-- APP_VERSION en src/components/brand.tsx en cada cambio visible (WEB5.0 - Vx.y)
-- Header RE + ROBERTO ESCOBAR CITTY + versión
-- Español claro. Acción ≠ boleto. Amarillo=gasto, rojo=pérdida, verde=ganancia
-- Weeklies $25 casi nunca son SÍ; no falsees el modelo
-- No crear index.html estático. No apagar WEB4. Push a GitHub con tag
-- Preview del sandbox en 0.0.0.0:8080
-
-Al retomar: git pull, lee PROJECT.md, no reescribas el app desde cero.
+Reglas:
+- Cada cambio visible: bump APP_VERSION en src/components/brand.tsx (WEB5.0 - Vx.y) y tag GitHub.
+- Header: monograma RE + ROBERTO ESCOBAR CITTY + versión.
+- Look: negro/cian/magenta/oro, cero radios, terminal. Ref. iStock multi-monitor.
+- Español claro. Acción ≠ boleto. Amarillo=gasto, rojo=pérdida, verde=ganancia.
+- Weeklies $25 casi nunca SÍ; no falsear el modelo.
+- Gráficas: velas, SMA, Bollinger EN LA MISMA escala Y; botón Completa/Esc.
+- No crear index.html estático. No rm -rf el DEST del Mac.
+- Preview sandbox 0.0.0.0:8080.
+- Al “bajar versión”: git clone --branch vX.Y --depth 1, cp -R a DEST, rm -f index.html, grep APP_VERSION, rebuild Docker.
+- Al retomar: git pull / clonar repo, leer PROJECT.md, NO reescribir el app desde cero.
 ```
