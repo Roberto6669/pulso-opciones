@@ -85,35 +85,45 @@ function axisTick(v: number) {
   return format(v, "d MMM", { locale: es });
 }
 
+type PlotOffset = { left: number; top: number; width: number; height: number };
+
+function plotX(i: number, n: number, offset: PlotOffset) {
+  const band = offset.width / Math.max(n, 1);
+  return offset.left + band * i + band / 2;
+}
+
+function plotY(v: number, yMin: number, yMax: number, offset: PlotOffset) {
+  const span = yMax - yMin || 1;
+  return offset.top + ((yMax - v) / span) * offset.height;
+}
+
 function CandleLayer(props: {
-  xAxisMap?: Record<string, { scale?: (v: unknown) => number; bandwidth?: () => number }>;
-  yAxisMap?: Record<string, { scale?: (v: number) => number; yAxisId?: string | number }>;
+  offset?: PlotOffset;
   data: ChartPoint[];
+  yMin: number;
+  yMax: number;
 }) {
-  const xAxis = Object.values(props.xAxisMap ?? {})[0];
-  const axes = Object.values(props.yAxisMap ?? {});
-  const yAxis = axes.find((ax) => ax.yAxisId === "price") ?? axes[0];
-  if (!xAxis?.scale || !yAxis?.scale) return null;
-  const bw = Math.max(2, (xAxis.bandwidth?.() ?? 6) * 0.55);
+  const offset = props.offset;
+  if (!offset || props.data.length < 1) return null;
+  const n = props.data.length;
+  const band = offset.width / n;
+  const bw = Math.max(2, band * 0.55);
   return (
     <g>
       {props.data.map((p, i) => {
-        const x0 = Number(xAxis.scale?.(p.t));
-        const x = Number.isFinite(x0) ? x0 : Number(xAxis.scale?.(i));
-        if (!Number.isFinite(x)) return null;
+        const cx = plotX(i, n, offset);
         const o = p.o ?? p.c;
         const hi = p.h ?? p.c;
         const lo = p.l ?? p.c;
-        const yO = yAxis.scale?.(o) ?? 0;
-        const yC = yAxis.scale?.(p.c) ?? 0;
-        const yH = yAxis.scale?.(hi) ?? 0;
-        const yL = yAxis.scale?.(lo) ?? 0;
+        const yO = plotY(o, props.yMin, props.yMax, offset);
+        const yC = plotY(p.c, props.yMin, props.yMax, offset);
+        const yH = plotY(hi, props.yMin, props.yMax, offset);
+        const yL = plotY(lo, props.yMin, props.yMax, offset);
         const up = p.c >= o;
         const color = up ? "var(--color-up)" : "var(--color-down)";
-        const cx = x + (xAxis.bandwidth?.() ?? bw) / 2;
         return (
           <g key={p.t}>
-            <line x1={cx} y1={yH} x2={cx} y2={yL} stroke={color} strokeWidth={1.4} />
+            <line x1={cx} y1={yH} x2={cx} y2={yL} stroke={color} strokeWidth={1.3} />
             <rect
               x={cx - bw / 2}
               y={Math.min(yO, yC)}
@@ -129,48 +139,27 @@ function CandleLayer(props: {
 }
 
 function BollingerFill(props: {
-  formattedGraphicalItems?: Array<{
-    props?: { dataKey?: string; points?: Array<{ x: number; y: number }> };
-    item?: { props?: { dataKey?: string } };
-  }>;
-  xAxisMap?: Record<string, { scale?: (v: unknown) => number }>;
-  yAxisMap?: Record<string, { scale?: (v: number) => number; yAxisId?: string | number }>;
+  offset?: PlotOffset;
   data: ChartPoint[];
+  yMin: number;
+  yMax: number;
 }) {
-  const grab = (key: string) => {
-    for (const it of props.formattedGraphicalItems ?? []) {
-      const dk = it.props?.dataKey ?? it.item?.props?.dataKey;
-      const pts = it.props?.points;
-      if (dk === key && pts?.length) {
-        return pts.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
-      }
-    }
-    return [] as Array<{ x: number; y: number }>;
-  };
-  let upper = grab("upper");
-  let lower = grab("lower");
-  if (upper.length < 3 || lower.length < 3) {
-    const xAxis = Object.values(props.xAxisMap ?? {})[0];
-    const axes = Object.values(props.yAxisMap ?? {});
-    const yAxis = axes.find((ax) => ax.yAxisId === "price") ?? axes[0];
-    if (xAxis?.scale && yAxis?.scale) {
-      const pts = props.data.filter((p) => p.upper != null && p.lower != null);
-      upper = pts.map((p, i) => {
-        const x = Number(xAxis.scale?.(p.t));
-        return { x: Number.isFinite(x) ? x : Number(xAxis.scale?.(i)), y: Number(yAxis.scale?.(p.upper as number)) };
-      });
-      lower = pts.map((p, i) => {
-        const x = Number(xAxis.scale?.(p.t));
-        return { x: Number.isFinite(x) ? x : Number(xAxis.scale?.(i)), y: Number(yAxis.scale?.(p.lower as number)) };
-      });
-    }
-  }
-  const n = Math.min(upper.length, lower.length);
-  if (n < 3) return null;
-  upper = upper.slice(0, n);
-  lower = lower.slice(0, n);
-  const d = `M${upper.map((p) => `${p.x},${p.y}`).join("L")}L${[...lower].reverse().map((p) => `${p.x},${p.y}`).join("L")}Z`;
-  return <path d={d} fill="var(--color-bb)" fillOpacity={0.18} stroke="none" />;
+  const offset = props.offset;
+  if (!offset) return null;
+  const pts = props.data
+    .map((p, i) =>
+      p.upper != null && p.lower != null
+        ? {
+            x: plotX(i, props.data.length, offset),
+            up: plotY(p.upper, props.yMin, props.yMax, offset),
+            lo: plotY(p.lower, props.yMin, props.yMax, offset),
+          }
+        : null,
+    )
+    .filter((p): p is { x: number; up: number; lo: number } => p != null);
+  if (pts.length < 3) return null;
+  const d = `M${pts.map((p) => `${p.x},${p.up}`).join("L")}L${[...pts].reverse().map((p) => `${p.x},${p.lo}`).join("L")}Z`;
+  return <path d={d} fill="var(--color-bb)" fillOpacity={0.2} stroke="none" />;
 }
 
 export function PriceChart({
@@ -449,7 +438,11 @@ export function PriceChart({
                 isAnimationActive={false}
               />
               {on.bb && (
-                <Customized component={(rest: object) => <BollingerFill {...rest} data={data} />} />
+                <Customized
+                  component={(rest: object) => (
+                    <BollingerFill {...rest} data={data} yMin={yMin} yMax={yMax} />
+                  )}
+                />
               )}
               {on.bb && (
                 <Line
@@ -487,24 +480,28 @@ export function PriceChart({
                 />
               )}
               {on.sma20 && (
-                <Line yAxisId="price" type="monotone" dataKey="sma20" stroke="var(--color-sma20)" strokeWidth={2.2} dot={false} filter="url(#lineGlow)" />
+                <Line yAxisId="price" type="linear" dataKey="sma20" stroke="var(--color-sma20)" strokeWidth={1.6} dot={false} isAnimationActive={false} />
               )}
               {on.sma50 && (
-                <Line yAxisId="price" type="monotone" dataKey="sma50" stroke="var(--color-sma50)" strokeWidth={2.2} dot={false} filter="url(#lineGlow)" />
+                <Line yAxisId="price" type="linear" dataKey="sma50" stroke="var(--color-sma50)" strokeWidth={1.6} dot={false} isAnimationActive={false} />
               )}
-              {on.sma200 && (
-                <Line yAxisId="price" type="monotone" dataKey="sma200" stroke="var(--color-sma200)" strokeWidth={2} dot={false} filter="url(#lineGlow)" />
+              {on.sma200 && last?.sma200 != null && (
+                <Line yAxisId="price" type="linear" dataKey="sma200" stroke="var(--color-sma200)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
               )}
               <Line
                 yAxisId="price"
-                type="monotone"
+                type="linear"
                 dataKey="c"
                 stroke="var(--color-accent)"
-                strokeWidth={2.4}
+                strokeWidth={1.8}
                 dot={false}
-                filter="url(#lineGlow)"
+                isAnimationActive={false}
               />
-              <Customized component={(rest: object) => <CandleLayer {...rest} data={data} />} />
+              <Customized
+                component={(rest: object) => (
+                  <CandleLayer {...rest} data={data} yMin={yMin} yMax={yMax} />
+                )}
+              />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
