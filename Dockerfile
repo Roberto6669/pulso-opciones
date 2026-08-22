@@ -4,7 +4,7 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl \
   && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm install
 COPY . .
 ENV NITRO_PRESET=node-server
 RUN npm run build
