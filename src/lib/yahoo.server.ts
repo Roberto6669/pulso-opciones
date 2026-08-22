@@ -86,6 +86,27 @@ async function curlJson<T>(url: string): Promise<T> {
   return JSON.parse(stdout) as T;
 }
 
+async function jsonGet<T>(url: string): Promise<T> {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": UA,
+        Accept: "application/json,text/plain,*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return (await res.json()) as T;
+  } catch (error) {
+    try {
+      return await curlJson<T>(url);
+    } catch {
+      throw error instanceof Error ? error : new Error("sin datos");
+    }
+  }
+}
+
 async function fetchHtml(url: string): Promise<string> {
   try {
     const res = await fetch(url, {
@@ -306,7 +327,7 @@ type YahooChart = {
 };
 
 async function fetchYahoo(sym: string, range: string): Promise<ChartBundle> {
-  const body = await curlJson<YahooChart>(
+  const body = await jsonGet<YahooChart>(
     `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=${range}&interval=1d&includePrePost=false`,
   );
   const result = body.chart?.result?.[0];
@@ -350,14 +371,15 @@ export async function fetchChart(symbol: string, range = "6mo"): Promise<ChartBu
   const key = `chart:${sym}:${range}`;
   const fresh = cached<ChartBundle>(key, 90_000);
   if (fresh) return fresh;
+  const span = range === "1y" ? "1y" : range === "3mo" ? "3mo" : "6mo";
 
   try {
-    return remember(key, await fetchNasdaq(sym));
+    return remember(key, await fetchYahoo(sym, span));
   } catch {
-    /* next */
+    /* nasdaq */
   }
   try {
-    return remember(key, await fetchYahoo(sym, range === "1y" ? "1y" : range === "3mo" ? "3mo" : "6mo"));
+    return remember(key, await fetchNasdaq(sym));
   } catch {
     /* last resort so the chart UI is never blank */
   }
@@ -681,7 +703,7 @@ async function fetchYahooOptions(sym: string, dteMin: number, dteMax: number): P
   let first: YahooOptions | null = null;
   for (const url of urls) {
     try {
-      first = await curlJson<YahooOptions>(url);
+      first = await jsonGet<YahooOptions>(url);
       if (first.optionChain?.result?.[0]?.expirationDates?.length) break;
     } catch {
       first = null;
@@ -693,7 +715,7 @@ async function fetchYahooOptions(sym: string, dteMin: number, dteMax: number): P
   const wanted = pickExpiration(dates, dteMin, dteMax);
   let pack = head.options?.[0];
   if (!pack || pack.expirationDate !== wanted) {
-    const second = await curlJson<YahooOptions>(
+    const second = await jsonGet<YahooOptions>(
       `https://query1.finance.yahoo.com/v7/finance/options/${encodeURIComponent(sym)}?date=${wanted}`,
     );
     pack = second.optionChain?.result?.[0]?.options?.[0];
