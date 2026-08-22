@@ -542,14 +542,21 @@ function Home() {
             <p className="mb-1.5 text-[9px] tracking-[0.14em] text-subtle uppercase">Qué analizar</p>
             <textarea
               value={symbols}
-              onChange={(e) => setSymbols(e.target.value)}
+              onChange={(e) => setSymbols(e.target.value.toUpperCase())}
               placeholder={
                 mode === "etf"
                   ? "SPY, QQQ, XLK…"
                   : "Vacío = las más activas HOY (large cap, millones de acciones)"
               }
               rows={3}
-              className="w-full border border-line bg-raised px-2 py-1.5 text-xs outline-none focus:border-accent/50"
+              autoCorrect="off"
+              autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              lang="en"
+              enterKeyHint="done"
+              data-gramm="false"
+              className="w-full border border-line bg-raised px-2 py-1.5 font-mono text-xs uppercase outline-none focus:border-accent/50"
             />
             {isOptions && (
               <div className="mt-1.5 grid grid-cols-3 gap-1">
