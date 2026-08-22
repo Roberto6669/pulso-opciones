@@ -724,47 +724,41 @@ export async function fetchHotUnderlyings(): Promise<string[]> {
   if (hit?.length) return hit;
   const seen = new Set<string>();
   const out: string[] = [];
-  const skip = new Set(["SPX", "NDX", "RUT", "VIX", "DJX", "OEX", "XSP", "SPCX"]);
+  const skip = new Set(["SPX", "NDX", "RUT", "VIX", "DJX", "OEX", "XSP", "SPCX", "VIXW"]);
 
   const push = (raw: string) => {
-    const s = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const s = raw.toUpperCase().replace(/[^A-Z]/g, "");
     if (!s || s.length > 5 || skip.has(s) || seen.has(s)) return;
-    if (/^[A-Z]+[MN]$/.test(s) && s.length >= 5) return;
     seen.add(s);
     out.push(s);
   };
 
-  try {
+  const scrapeYahoo = async (url: string) => {
     const { stdout } = await execFileAsync(
       "curl",
-      ["-sS", "-A", UA, "--compressed", "--max-time", "15", "https://finance.yahoo.com/markets/options/most-active/"],
-      { maxBuffer: 3_000_000 },
+      ["-sS", "-A", UA, "--compressed", "--max-time", "15", url],
+      { maxBuffer: 4_000_000 },
     );
+    for (const m of stdout.matchAll(/data-symbol="([A-Z]{1,5})"/g)) push(m[1]);
+    for (const m of stdout.matchAll(/"symbol":"([A-Z]{1,5})"/g)) push(m[1]);
     for (const m of stdout.matchAll(/\b([A-Z]{1,6})\d{6}[CP]\d{8}\b/g)) push(m[1]);
-  } catch {
-    /* nasdaq next */
+  };
+
+  for (const url of [
+    "https://finance.yahoo.com/markets/options/most-active/",
+    "https://finance.yahoo.com/markets/options/highest-open-interest/",
+    "https://finance.yahoo.com/markets/options/highest-implied-volatility/",
+  ]) {
+    try {
+      await scrapeYahoo(url);
+    } catch {
+      /* next page */
+    }
   }
 
-  for (const core of ["SPY", "QQQ", "IWM", "NVDA", "TSLA", "AAPL", "AMD", "META", "AMZN"]) push(core);
+  for (const core of ["SPY", "QQQ", "IWM", "NVDA", "TSLA"]) push(core);
 
-  try {
-    const body = await nasdaqJson<{
-      data?: { rows?: Array<{ symbol?: string; marketCap?: string; volume?: string }> };
-    }>("https://api.nasdaq.com/api/screener/stocks?tableonly=true&limit=100&offset=0&download=true");
-    const scored = (body.data?.rows ?? [])
-      .map((row) => {
-        const cap = Number(String(row.marketCap ?? "").replace(/[^0-9.]/g, "")) || 0;
-        const vol = Number(String(row.volume ?? "").replace(/[^0-9.]/g, "")) || 0;
-        return { symbol: row.symbol ?? "", cap, vol };
-      })
-      .filter((row) => row.symbol && row.cap >= 8_000_000_000 && row.cap <= 10_000_000_000_000 && row.vol >= 8_000_000)
-      .sort((a, b) => b.vol - a.vol);
-    for (const row of scored) push(row.symbol);
-  } catch {
-    /* keep */
-  }
-
-  return remember("hot-underlyings", out.slice(0, 40));
+  return remember("hot-underlyings", out.slice(0, 45));
 }
 
 export async function searchSymbols(q: string): Promise<SearchHit[]> {

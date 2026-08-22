@@ -91,11 +91,8 @@ function Home() {
   const friday = nextFriday();
   const hitPack = useMemo(() => {
     const flow = (h: Ranked) => optionFlow(h.vol, h.oi);
-    const useful = (h: Ranked, cap: number) => {
-      const rowDays = h.exp ? Math.max(1, dte(h.exp)) : 7;
-      const est = estimatePayoff(h, h.px, Math.max(cap, Math.ceil(h.debit)), { dte: rowDays });
-      return actionFor(est, null, h, rowDays).label !== "NO";
-    };
+    const useful = (h: Ranked, cap: number) =>
+      h.debit <= cap && (h.vol > 0 || h.oi > 10);
     const unique = (rows: Ranked[]) => {
       const seen = new Set<string>();
       return rows.filter((h) => {
@@ -282,14 +279,14 @@ function Home() {
     setProgress({ done: 0, total: pool.length, label: pool[0] ?? "" });
     setScanLog(
       wide && isOptions
-        ? [`Hoy se mueve (${pool.length}): ${pool.slice(0, 14).join(", ")}${pool.length > 14 ? "…" : ""}`]
+        ? [`Volumen de opciones hoy (${pool.length}): ${pool.slice(0, 14).join(", ")}${pool.length > 14 ? "…" : ""}`]
         : [`Consultando ${pool.length} símbolo(s) en el mercado…`],
     );
 
     const skipped: string[] = [];
     const lines: string[] = [
       wide && isOptions
-        ? `Hoy se mueve (${pool.length}): ${pool.slice(0, 14).join(", ")}${pool.length > 14 ? "…" : ""}`
+        ? `Volumen de opciones hoy (${pool.length}): ${pool.slice(0, 14).join(", ")}${pool.length > 14 ? "…" : ""}`
         : `Consultando ${pool.length} símbolo(s) en el mercado…`,
     ];
     const foundOpt: Ranked[] = [];
@@ -310,7 +307,7 @@ function Home() {
               budget,
               dteMin: Math.min(dteMin, dteMax),
               dteMax: Math.max(dteMin, dteMax),
-              largeCap: wide,
+              largeCap: false,
             },
           });
           if (id !== scanId.current) return;
@@ -533,7 +530,7 @@ function Home() {
             )}
             <p className="mt-1.5 text-[10px] text-subtle">
               {isOptions
-                ? "Vacío = las más activas HOY (large cap, millones de acciones)."
+                ? "Vacío = más volumen de OPCIONES hoy, no las acciones más negociadas."
                 : `Vacío: ${universe().length} large caps / ETFs líquidos.`}
             </p>
           </section>
@@ -546,7 +543,7 @@ function Home() {
               placeholder={
                 mode === "etf"
                   ? "SPY, QQQ, XLK…"
-                  : "Vacío = las más activas HOY (large cap, millones de acciones)"
+                  : "Vacío = más volumen de OPCIONES hoy (como IBKR Option Volume)"
               }
               rows={3}
               autoCorrect="off"
