@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { MiniChart } from "@/components/mini-chart";
-import { fetchIndices, type IndexQuote } from "@/lib/market.fns";
+import { marketApi } from "@/lib/market.client";
+import type { IndexQuote } from "@/lib/market.fns";
 import { cn, formatMoney, formatPct } from "@/lib/utils";
 
 function marketClock() {
@@ -20,7 +21,10 @@ export function MarketStrip() {
   const [clock, setClock] = useState(marketClock);
 
   useEffect(() => {
-    void fetchIndices().then(setRows).catch(() => setRows([]));
+    void marketApi
+      .indices()
+      .then((rows) => setRows(rows as IndexQuote[]))
+      .catch(() => setRows([]));
     const id = window.setInterval(() => setClock(marketClock()), 30_000);
     return () => window.clearInterval(id);
   }, []);

@@ -327,13 +327,24 @@ type YahooChart = {
 };
 
 async function fetchYahoo(sym: string, range: string): Promise<ChartBundle> {
-  const body = await jsonGet<YahooChart>(
+  const urls = [
     `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=${range}&interval=1d&includePrePost=false`,
-  );
-  const result = body.chart?.result?.[0];
+    `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=${range}&interval=1d&includePrePost=false`,
+  ];
+  let body: YahooChart | null = null;
+  let lastErr = "Yahoo vacío";
+  for (const url of urls) {
+    try {
+      body = await jsonGet<YahooChart>(url);
+      if (body.chart?.result?.[0]) break;
+    } catch (error) {
+      lastErr = error instanceof Error ? error.message : lastErr;
+    }
+  }
+  const result = body?.chart?.result?.[0];
   const quote = result?.indicators?.quote?.[0];
   const ts = result?.timestamp ?? [];
-  if (!result || !quote || ts.length < 30) throw new Error("Yahoo vacío");
+  if (!result || !quote || ts.length < 30) throw new Error(lastErr);
   const bars: Bar[] = ts
     .map((t, i) => ({
       t: t * 1000,
@@ -645,7 +656,7 @@ type CboeQuote = {
 };
 
 async function fetchCboeOptions(sym: string, dteMin: number, dteMax: number): Promise<LiveChain> {
-  const body = await curlJson<CboeQuote>(
+  const body = await jsonGet<CboeQuote>(
     `https://cdn.cboe.com/api/global/delayed_quotes/options/${encodeURIComponent(sym)}.json`,
   );
   const rows = body.data?.options ?? [];

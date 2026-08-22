@@ -12,7 +12,8 @@ import { OptionTicket } from "@/components/option-ticket";
 import { EquityTicket } from "@/components/equity-ticket";
 import { ScoreBar, MiniScore } from "@/components/score-bar";
 import { APP_VERSION } from "@/components/brand";
-import { analyzeTicker, fetchHotUniverse, scanBatch, scanEquities, type PublicAnalysis } from "@/lib/market.fns";
+import type { PublicAnalysis } from "@/lib/market.fns";
+import { marketApi } from "@/lib/market.client";
 import type { SparkPoint } from "@/lib/analysis";
 import { estimatePayoff } from "@/lib/estimate";
 import { actionFor, confidenceLabel, dteRisk, setupTags } from "@/lib/setup";
@@ -197,9 +198,10 @@ function Home() {
     let cancel = false;
     setChartBusy(true);
     setChartErr(null);
-    void analyzeTicker({ data: { symbol: activeSymbol, range: "6mo" } })
+    void marketApi
+      .analyze({ symbol: activeSymbol, range: "6mo" })
       .then((row) => {
-        if (!cancel) setAnalysis(row);
+        if (!cancel) setAnalysis(row as PublicAnalysis);
       })
       .catch(() => {
         if (!cancel) {
@@ -269,7 +271,7 @@ function Home() {
 
     if (wide && isOptions) {
       try {
-        const hot = await fetchHotUniverse({ data: true });
+        const hot = await marketApi.hot();
         if (id !== scanId.current) return;
         if (hot.symbols.length) pool = hot.symbols;
       } catch {
@@ -300,16 +302,19 @@ function Home() {
       setProgress({ done: i, total: pool.length, label: chunk.join(" · ") });
       try {
         if (isOptions) {
-          const batch = await scanBatch({
-            data: {
+          const batch = (await marketApi.scan({
               symbols: chunk,
               side,
               budget,
               dteMin: Math.min(dteMin, dteMax),
               dteMax: Math.max(dteMin, dteMax),
               largeCap: false,
-            },
-          });
+            })) as {
+            hits: Ranked[];
+            omitted: string[];
+            log: string[];
+            minis: Record<string, SparkPoint[]>;
+          };
           if (id !== scanId.current) return;
           foundOpt.push(...batch.hits);
           skipped.push(...batch.omitted);
@@ -317,7 +322,12 @@ function Home() {
           Object.assign(spark, batch.minis);
           setHits([...foundOpt].sort((a, b) => b.score - a.score || b.vol - a.vol));
         } else {
-          const batch = await scanEquities({ data: { symbols: chunk, largeCap: wide } });
+          const batch = (await marketApi.equities({ symbols: chunk, largeCap: wide })) as {
+            hits: EquityHit[];
+            omitted: string[];
+            log: string[];
+            minis: Record<string, SparkPoint[]>;
+          };
           if (id !== scanId.current) return;
           foundEq.push(...batch.hits);
           skipped.push(...batch.omitted);

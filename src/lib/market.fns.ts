@@ -30,7 +30,7 @@ export type PublicAnalysis = {
   series: ReturnType<typeof chartSeries>;
 };
 
-function analyzeBundle(bundle: Awaited<ReturnType<typeof fetchChart>>): PublicAnalysis {
+export function analyzeBundle(bundle: Awaited<ReturnType<typeof fetchChart>>): PublicAnalysis {
   const ind = computeIndicators(bundle.bars);
   return {
     symbol: bundle.meta.symbol,
@@ -73,39 +73,43 @@ export type IndexQuote = {
   spark: SparkPoint[];
 };
 
+export async function loadIndices(): Promise<IndexQuote[]> {
+  return Promise.all(
+    INDEX_SYMBOLS.map(async (item) => {
+      try {
+        const bundle = await fetchChart(item.symbol, "3mo");
+        return {
+          symbol: item.symbol,
+          label: item.label,
+          price: bundle.meta.price,
+          changePct: bundle.meta.changePct,
+          spark: sparkline(bundle.bars, 22),
+        };
+      } catch {
+        return {
+          symbol: item.symbol,
+          label: item.label,
+          price: 0,
+          changePct: 0,
+          spark: [] as SparkPoint[],
+        };
+      }
+    }),
+  );
+}
+
 export const fetchIndices = createServerFn({ method: "POST" })
   .validator(() => true)
-  .handler(async () => {
-    return Promise.all(
-      INDEX_SYMBOLS.map(async (item) => {
-        try {
-          const bundle = await fetchChart(item.symbol, "3mo");
-          return {
-            symbol: item.symbol,
-            label: item.label,
-            price: bundle.meta.price,
-            changePct: bundle.meta.changePct,
-            spark: sparkline(bundle.bars, 22),
-          };
-        } catch {
-          return {
-            symbol: item.symbol,
-            label: item.label,
-            price: 0,
-            changePct: 0,
-            spark: [] as SparkPoint[],
-          };
-        }
-      }),
-    );
-  });
+  .handler(async () => loadIndices());
+
+export async function loadHotUniverse() {
+  const symbols = await fetchHotUnderlyings();
+  return { symbols };
+}
 
 export const fetchHotUniverse = createServerFn({ method: "POST" })
   .validator(() => true)
-  .handler(async () => {
-    const symbols = await fetchHotUnderlyings();
-    return { symbols };
-  });
+  .handler(async () => loadHotUniverse());
 
 export type RadarRow = {
   symbol: string;
@@ -252,31 +256,14 @@ function pickLegs(legs: LiveOption[], spot: number) {
   return out;
 }
 
-export const scanBatch = createServerFn({ method: "POST" })
-  .validator((input: {
-    symbols: string[];
-    side: Side;
-    budget: number;
-    dteMin: number;
-    dteMax: number;
-    largeCap?: boolean;
-  }) => ({
-    symbols: (input.symbols ?? [])
-      .map((s) =>
-        String(s)
-          .toUpperCase()
-          .replace(/[^A-Z0-9.^=-]/g, "")
-          .slice(0, 12),
-      )
-      .filter(Boolean)
-      .slice(0, 6),
-    side: input.side === "call" || input.side === "put" ? input.side : "both",
-    budget: Math.max(10, Math.min(Number(input.budget) || 100, 5000)),
-    dteMin: Math.max(1, Math.min(Number(input.dteMin) || 2, 90)),
-    dteMax: Math.max(1, Math.min(Number(input.dteMax) || 7, 120)),
-    largeCap: Boolean(input.largeCap),
-  }))
-  .handler(async ({ data }): Promise<ScanBatch> => {
+export async function runScanBatch(data: {
+  symbols: string[];
+  side: Side;
+  budget: number;
+  dteMin: number;
+  dteMax: number;
+  largeCap?: boolean;
+}): Promise<ScanBatch> {
     const hits: Ranked[] = [];
     const omitted: string[] = [];
     const log: string[] = [];
@@ -352,7 +339,33 @@ export const scanBatch = createServerFn({ method: "POST" })
         (a.exp && b.exp ? dte(a.exp) - dte(b.exp) : 0),
     );
     return { hits, analyzed, omitted, log, minis };
-  });
+}
+
+export const scanBatch = createServerFn({ method: "POST" })
+  .validator((input: {
+    symbols: string[];
+    side: Side;
+    budget: number;
+    dteMin: number;
+    dteMax: number;
+    largeCap?: boolean;
+  }) => ({
+    symbols: (input.symbols ?? [])
+      .map((s) =>
+        String(s)
+          .toUpperCase()
+          .replace(/[^A-Z0-9.^=-]/g, "")
+          .slice(0, 12),
+      )
+      .filter(Boolean)
+      .slice(0, 6),
+    side: (input.side === "call" || input.side === "put" ? input.side : "both") as Side,
+    budget: Math.max(10, Math.min(Number(input.budget) || 100, 5000)),
+    dteMin: Math.max(1, Math.min(Number(input.dteMin) || 2, 90)),
+    dteMax: Math.max(1, Math.min(Number(input.dteMax) || 7, 120)),
+    largeCap: Boolean(input.largeCap),
+  }))
+  .handler(async ({ data }) => runScanBatch(data));
 
 export type EquityBatch = {
   hits: EquityHit[];
@@ -360,6 +373,56 @@ export type EquityBatch = {
   log: string[];
   minis: Record<string, SparkPoint[]>;
 };
+
+export async function runEquityBatch(data: { symbols: string[]; largeCap?: boolean }): Promise<EquityBatch> {
+  const hits: EquityHit[] = [];
+  const omitted: string[] = [];
+  const log: string[] = [];
+  const minis: Record<string, SparkPoint[]> = {};
+
+  await Promise.all(
+    data.symbols.map(async (symbol) => {
+      try {
+        const bundle = await fetchChart(symbol, "3mo");
+        const analysis = analyzeBundle(bundle);
+        const closes = bundle.bars.map((b) => b.c).filter((c) => c > 0);
+        const avgVol = analysis.indicators.volAvg20 ?? bundle.bars.at(-1)?.v ?? 0;
+        if (data.largeCap && avgVol > 0 && avgVol < 1_500_000) {
+          omitted.push(symbol);
+          log.push(
+            `${symbol} · omitido: volumen medio ${(avgVol / 1_000_000).toFixed(1)}M < 1.5M`,
+          );
+          return;
+        }
+        minis[symbol] = sparkline(bundle.bars);
+        hits.push({
+          s: analysis.symbol,
+          name: analysis.name,
+          px: analysis.price,
+          changePct: analysis.changePct,
+          score: analysis.verdict.score,
+          kind: analysis.verdict.kind,
+          rsi: analysis.indicators.rsi14,
+          sma20: analysis.indicators.sma20,
+          sma50: analysis.indicators.sma50,
+          hv: histVol(closes),
+          volume: bundle.bars.at(-1)?.v ?? 0,
+          weekHigh: analysis.weekHigh,
+          weekLow: analysis.weekLow,
+        });
+        log.push(
+          `${analysis.symbol} · ${analysis.name} · ${analysis.price.toFixed(2)} · ${analysis.verdict.kind} · score ${analysis.verdict.score}`,
+        );
+      } catch (error) {
+        omitted.push(symbol);
+        log.push(`${symbol} · omitido: ${error instanceof Error ? error.message : "sin datos"}`);
+      }
+    }),
+  );
+
+  hits.sort((a, b) => b.score - a.score || Math.abs(b.changePct) - Math.abs(a.changePct));
+  return { hits, omitted, log, minis };
+}
 
 export const scanEquities = createServerFn({ method: "POST" })
   .validator((input: { symbols: string[]; largeCap?: boolean }) => ({
@@ -374,53 +437,5 @@ export const scanEquities = createServerFn({ method: "POST" })
       .slice(0, 8),
     largeCap: Boolean(input.largeCap),
   }))
-  .handler(async ({ data }): Promise<EquityBatch> => {
-    const hits: EquityHit[] = [];
-    const omitted: string[] = [];
-    const log: string[] = [];
-    const minis: Record<string, SparkPoint[]> = {};
-
-    await Promise.all(
-      data.symbols.map(async (symbol) => {
-        try {
-          const bundle = await fetchChart(symbol, "3mo");
-          const analysis = analyzeBundle(bundle);
-          const closes = bundle.bars.map((b) => b.c).filter((c) => c > 0);
-          const avgVol = analysis.indicators.volAvg20 ?? bundle.bars.at(-1)?.v ?? 0;
-          if (data.largeCap && avgVol > 0 && avgVol < 1_500_000) {
-            omitted.push(symbol);
-            log.push(
-              `${symbol} · omitido: volumen medio ${(avgVol / 1_000_000).toFixed(1)}M < 1.5M`,
-            );
-            return;
-          }
-          minis[symbol] = sparkline(bundle.bars);
-          hits.push({
-            s: analysis.symbol,
-            name: analysis.name,
-            px: analysis.price,
-            changePct: analysis.changePct,
-            score: analysis.verdict.score,
-            kind: analysis.verdict.kind,
-            rsi: analysis.indicators.rsi14,
-            sma20: analysis.indicators.sma20,
-            sma50: analysis.indicators.sma50,
-            hv: histVol(closes),
-            volume: bundle.bars.at(-1)?.v ?? 0,
-            weekHigh: analysis.weekHigh,
-            weekLow: analysis.weekLow,
-          });
-          log.push(
-            `${analysis.symbol} · ${analysis.name} · ${analysis.price.toFixed(2)} · ${analysis.verdict.kind} · score ${analysis.verdict.score}`,
-          );
-        } catch (error) {
-          omitted.push(symbol);
-          log.push(`${symbol} · omitido: ${error instanceof Error ? error.message : "sin datos"}`);
-        }
-      }),
-    );
-
-    hits.sort((a, b) => b.score - a.score || Math.abs(b.changePct) - Math.abs(a.changePct));
-    return { hits, omitted, log, minis };
-  });
+  .handler(async ({ data }) => runEquityBatch(data));
 
