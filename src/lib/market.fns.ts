@@ -218,8 +218,7 @@ function trendFrom(kind: SignalKind, changePct: number): Trend {
   return "flat";
 }
 
-function pickLegs(legs: LiveOption[], budget: number, spot: number) {
-  const maxDist = budget <= 50 ? 0.28 : budget <= 100 ? 0.2 : 0.14;
+function pickLegs(legs: LiveOption[], spot: number) {
   const ranked = legs
     .map((leg) => {
       const mid = (leg.bid + leg.ask) / 2 || leg.last;
@@ -234,14 +233,23 @@ function pickLegs(legs: LiveOption[], budget: number, spot: number) {
         flow: leg.volume + leg.openInterest * 0.4,
       };
     })
-    .filter((row) => row.debit > 0.5 && row.debit + 1 <= budget);
-  const tight = ranked.filter(
-    (row) => row.dist <= maxDist && (row.spreadPct <= 0.4 || row.mid < 0.4) && (row.leg.volume > 0 || row.leg.openInterest > 1 || row.mid > 0),
-  );
-  const pool = (tight.length ? tight : ranked.filter((row) => row.dist <= maxDist + 0.1)).sort(
-    (a, b) => a.dist - b.dist || b.flow - a.flow,
-  );
-  return pool.slice(0, 4).map((row) => row.leg);
+    .filter(
+      (row) =>
+        row.debit > 0.5 &&
+        row.debit + 1 <= 1000 &&
+        (row.spreadPct <= 0.45 || row.mid < 0.45),
+    )
+    .sort((a, b) => b.flow - a.flow || a.dist - b.dist);
+  const used = new Set<string>();
+  const out: LiveOption[] = [];
+  for (const row of ranked) {
+    const id = `${row.leg.strike}-${row.leg.expiration}`;
+    if (used.has(id)) continue;
+    used.add(id);
+    out.push(row.leg);
+    if (out.length >= 6) break;
+  }
+  return out;
 }
 
 export const scanBatch = createServerFn({ method: "POST" })
@@ -292,13 +300,13 @@ export const scanBatch = createServerFn({ method: "POST" })
         const chain = await fetchOptionChain(symbol, data.dteMin, data.dteMax);
         const trend = trendFrom(analysis.verdict.kind, analysis.changePct);
         const legs = [
-          ...(data.side !== "put" ? pickLegs(chain.calls, data.budget, chain.price || analysis.price) : []),
-          ...(data.side !== "call" ? pickLegs(chain.puts, data.budget, chain.price || analysis.price) : []),
+          ...(data.side !== "put" ? pickLegs(chain.calls, chain.price || analysis.price) : []),
+          ...(data.side !== "call" ? pickLegs(chain.puts, chain.price || analysis.price) : []),
         ];
         if (legs.length === 0) {
           omitted.push(symbol);
           log.push(
-            `${symbol} · precio ${analysis.price.toFixed(2)} · venc. ${chain.expiration} · 0 contratos ≤ $${data.budget}`,
+            `${symbol} · precio ${analysis.price.toFixed(2)} · venc. ${chain.expiration} · 0 contratos líquidos`,
           );
           return;
         }
@@ -339,9 +347,9 @@ export const scanBatch = createServerFn({ method: "POST" })
 
     hits.sort(
       (a, b) =>
+        b.vol + b.oi * 0.4 - (a.vol + a.oi * 0.4) ||
         b.score - a.score ||
-        (a.exp && b.exp ? dte(a.exp) - dte(b.exp) : 0) ||
-        b.vol - a.vol,
+        (a.exp && b.exp ? dte(a.exp) - dte(b.exp) : 0),
     );
     return { hits, analyzed, omitted, log, minis };
   });
@@ -382,7 +390,7 @@ export const scanEquities = createServerFn({ method: "POST" })
           if (data.largeCap && avgVol > 0 && avgVol < 1_500_000) {
             omitted.push(symbol);
             log.push(
-              `${symbol} · omitido: volumen medio ${(avgVol / 1_000_000).toFixed(1)}M < 5M`,
+              `${symbol} · omitido: volumen medio ${(avgVol / 1_000_000).toFixed(1)}M < 1.5M`,
             );
             return;
           }

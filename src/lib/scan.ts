@@ -27,6 +27,16 @@ export type Ranked = Contract & {
   parts?: { liq: number; tech: number; dir: number };
 };
 
+export const BUDGET_TIERS = [25, 50, 100, 250, 500, 1000] as const;
+
+export function budgetBand(debit: number) {
+  return BUDGET_TIERS.find((tier) => debit <= tier) ?? 1000;
+}
+
+export function optionFlow(vol: number, oi: number) {
+  return vol + oi * 0.4;
+}
+
 export const SCAN_SYMBOLS = [
   "SPY",
   "QQQ",

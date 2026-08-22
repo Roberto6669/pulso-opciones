@@ -42,6 +42,10 @@ export type Estimate = {
   scenarios: Scenario[];
   lastWindow: HistTrade | null;
   payoff: Array<{ spot: number; pnl: number }>;
+  emAbs: number;
+  emPct: number;
+  emHigh: number;
+  emLow: number;
   backtest: {
     trades: number;
     wins: number;
@@ -76,6 +80,36 @@ export function bsPrice(S: number, K: number, T: number, sigma: number, side: "c
   const d2 = d1 - v;
   if (side === "call") return Math.max(0, S * nCdf(d1) - K * nCdf(d2));
   return Math.max(0, K * nCdf(-d2) - S * nCdf(-d1));
+}
+
+export function expectedMove(spot: number, sigma: number, dte: number) {
+  const T = Math.max(dte, 1) / 365;
+  const abs = spot * Math.max(sigma, 0.05) * Math.sqrt(T);
+  return {
+    abs,
+    pct: spot ? (abs / spot) * 100 : 0,
+    high: spot + abs,
+    low: Math.max(0, spot - abs),
+  };
+}
+
+export function bsGreeks(S: number, K: number, T: number, sigma: number, side: "call" | "put") {
+  const t = Math.max(T, 1 / 365);
+  const vol = Math.max(sigma, 0.05);
+  const sqrtT = Math.sqrt(t);
+  const d1 = (Math.log(S / K) + 0.5 * vol * vol * t) / (vol * sqrtT);
+  const nd1 = Math.exp(-0.5 * d1 * d1) / Math.sqrt(2 * Math.PI);
+  const delta = side === "call" ? nCdf(d1) : nCdf(d1) - 1;
+  const gamma = nd1 / (S * vol * sqrtT);
+  const vega = (S * nd1 * sqrtT) / 100;
+  const theta = (-(S * nd1 * vol) / (2 * sqrtT)) / 365;
+  return {
+    theo: bsPrice(S, K, t, vol, side),
+    delta,
+    gamma,
+    theta,
+    vega,
+  };
 }
 
 export function histVol(closes: number[]) {
@@ -156,6 +190,7 @@ export function estimatePayoff(
     contract.t === "call" ? liveK + contract.mid + feeEach : liveK - contract.mid - feeEach;
   const expectedSpot = spot * Math.exp(mu * T);
   const expectedMovePct = (Math.exp(sigma * Math.sqrt(T)) - 1) * 100;
+  const em = expectedMove(spot, sigma, dte);
   const zBe = Math.log(Math.max(breakeven, 0.01) / spot);
   const pProfit =
     contract.t === "call"
@@ -261,6 +296,10 @@ export function estimatePayoff(
     scenarios,
     lastWindow,
     payoff,
+    emAbs: em.abs,
+    emPct: em.pct,
+    emHigh: em.high,
+    emLow: em.low,
     backtest: {
       trades: trades.length,
       wins: trades.filter((t) => t.pnl > 0).length,

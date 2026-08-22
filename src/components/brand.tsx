@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 
-export const APP_VERSION = "WEB5.0 - V3.32";
+export const APP_VERSION = "WEB5.0 - V3.34";
 export const BRAND_NAME = "Roberto Escobar Citty";
 export const PRODUCT_NAME = "Pulso Options Analyzer";
 export const BRAND_ROLE = "Regional Vice President · Options Analysis Dashboard";
@@ -15,14 +15,14 @@ export function BrandLockup({
 }) {
   return (
     <Link to="/" className="flex min-w-0 items-center gap-2 text-fg">
-      <span
+      <img
+        src="/logo.png"
+        alt="Roberto Escobar Citty"
         className={cn(
-          "grid shrink-0 place-items-center border border-line-strong bg-raised font-sans font-semibold tracking-tight text-accent",
-          compact ? "size-6 text-[9px]" : "size-7 text-[10px]",
+          "shrink-0 bg-[#0a1018] object-cover object-[center_36%]",
+          compact ? "size-8" : "size-10",
         )}
-      >
-        RE
-      </span>
+      />
       <span className="min-w-0">
         <span className="hidden text-[11px] font-semibold tracking-[0.1em] uppercase sm:block">
           {BRAND_NAME}

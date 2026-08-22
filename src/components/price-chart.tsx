@@ -157,16 +157,18 @@ export function PriceChart({
   series,
   currency,
   target,
+  em,
 }: {
   series: ChartPoint[];
   currency: string;
   target?: { price: number; label: string } | null;
+  em?: { low: number; high: number } | null;
 }) {
   const [on, setOn] = useState<Record<Overlay, boolean>>({
     bb: true,
     sma20: true,
     sma50: true,
-    sma200: true,
+    sma200: false,
   });
   const [range, setRange] = useState<Range>("3m");
   const [full, setFull] = useState(false);
@@ -206,13 +208,15 @@ export function PriceChart({
       min = Math.min(min, target.price);
       max = Math.max(max, target.price);
     }
+    if (em?.low) min = Math.min(min, em.low);
+    if (em?.high) max = Math.max(max, em.high);
     const pad = (max - min) * 0.1 || 1;
     return {
       yMin: min - pad,
       yMax: max + pad,
       last: data.at(-1),
     };
-  }, [data, on.bb, target?.price]);
+  }, [data, on.bb, target?.price, em?.low, em?.high]);
 
   const tipStyle = {
     background: "var(--color-raised)",
@@ -241,7 +245,7 @@ export function PriceChart({
         </div>
         {last && <LevelGuide last={last} />}
         <div className="grid w-full grid-cols-1 gap-1 sm:grid-cols-2">
-          {OVERLAYS.map((item) => {
+          {OVERLAYS.filter((item) => item.id !== "sma200" || last?.sma200 != null).map((item) => {
             const meter = overlayMeter(item.id, last);
             return (
               <button
@@ -353,6 +357,26 @@ export function PriceChart({
                 }
               />
               <YAxis yAxisId="vol" hide domain={[0, (dataMax: number) => dataMax * 3.2]} />
+              {em && (
+                <ReferenceLine
+                  yAxisId="price"
+                  y={em.high}
+                  stroke="var(--color-accent)"
+                  strokeDasharray="2 4"
+                  strokeOpacity={0.7}
+                  label={{ value: "EM+", fill: "var(--color-accent)", fontSize: 9, position: "insideTopLeft" }}
+                />
+              )}
+              {em && (
+                <ReferenceLine
+                  yAxisId="price"
+                  y={em.low}
+                  stroke="var(--color-accent)"
+                  strokeDasharray="2 4"
+                  strokeOpacity={0.7}
+                  label={{ value: "EM−", fill: "var(--color-accent)", fontSize: 9, position: "insideBottomLeft" }}
+                />
+              )}
               {target && (
                 <ReferenceLine
                   yAxisId="price"
