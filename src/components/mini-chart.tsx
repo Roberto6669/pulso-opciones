@@ -40,15 +40,8 @@ export function MiniChart({
 
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="h-8 w-[5.5rem] overflow-visible" aria-hidden>
-      <defs>
-        <linearGradient id={`miniFill-${up ? "u" : "d"}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={stroke} stopOpacity="0.45" />
-          <stop offset="100%" stopColor={stroke} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {band && <path d={band} fill="var(--color-bb)" fillOpacity="0.22" />}
+      {band && <path d={band} fill="var(--color-bb)" fillOpacity="0.28" />}
       {mid && <path d={mid} fill="none" stroke="var(--color-sma20)" strokeWidth="0.9" />}
-      <path d={`${line} L${x(points.length - 1).toFixed(1)},${h} L${x(0).toFixed(1)},${h} Z`} fill={`url(#miniFill-${up ? "u" : "d"})`} />
       <path d={line} fill="none" stroke={stroke} strokeWidth="1.6" />
     </svg>
   );

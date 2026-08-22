@@ -129,28 +129,48 @@ function CandleLayer(props: {
 }
 
 function BollingerFill(props: {
+  formattedGraphicalItems?: Array<{
+    props?: { dataKey?: string; points?: Array<{ x: number; y: number }> };
+    item?: { props?: { dataKey?: string } };
+  }>;
   xAxisMap?: Record<string, { scale?: (v: unknown) => number }>;
   yAxisMap?: Record<string, { scale?: (v: number) => number; yAxisId?: string | number }>;
   data: ChartPoint[];
 }) {
-  const xAxis = Object.values(props.xAxisMap ?? {})[0];
-  const axes = Object.values(props.yAxisMap ?? {});
-  const yAxis = axes.find((ax) => ax.yAxisId === "price") ?? axes[0];
-  if (!xAxis?.scale || !yAxis?.scale) return null;
-  const pts = props.data.filter((p) => p.upper != null && p.lower != null);
-  if (pts.length < 3) return null;
-  const xs = pts.map((p, i) => {
-    const a = Number(xAxis.scale?.(p.t));
-    return Number.isFinite(a) ? a : Number(xAxis.scale?.(i));
-  });
-  if (xs.some((v) => !Number.isFinite(v))) return null;
-  const top = pts.map((p, i) => `${xs[i]},${yAxis.scale?.(p.upper as number)}`);
-  const bot = [...pts]
-    .reverse()
-    .map((p, i) => `${xs[pts.length - 1 - i]},${yAxis.scale?.(p.lower as number)}`);
-  return (
-    <path d={`M${top.join("L")}L${bot.join("L")}Z`} fill="var(--color-bb)" fillOpacity={0.2} />
-  );
+  const grab = (key: string) => {
+    for (const it of props.formattedGraphicalItems ?? []) {
+      const dk = it.props?.dataKey ?? it.item?.props?.dataKey;
+      const pts = it.props?.points;
+      if (dk === key && pts?.length) {
+        return pts.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+      }
+    }
+    return [] as Array<{ x: number; y: number }>;
+  };
+  let upper = grab("upper");
+  let lower = grab("lower");
+  if (upper.length < 3 || lower.length < 3) {
+    const xAxis = Object.values(props.xAxisMap ?? {})[0];
+    const axes = Object.values(props.yAxisMap ?? {});
+    const yAxis = axes.find((ax) => ax.yAxisId === "price") ?? axes[0];
+    if (xAxis?.scale && yAxis?.scale) {
+      const pts = props.data.filter((p) => p.upper != null && p.lower != null);
+      upper = pts.map((p, i) => {
+        const x = Number(xAxis.scale?.(p.t));
+        return { x: Number.isFinite(x) ? x : Number(xAxis.scale?.(i)), y: Number(yAxis.scale?.(p.upper as number)) };
+      });
+      lower = pts.map((p, i) => {
+        const x = Number(xAxis.scale?.(p.t));
+        return { x: Number.isFinite(x) ? x : Number(xAxis.scale?.(i)), y: Number(yAxis.scale?.(p.lower as number)) };
+      });
+    }
+  }
+  const n = Math.min(upper.length, lower.length);
+  if (n < 3) return null;
+  upper = upper.slice(0, n);
+  lower = lower.slice(0, n);
+  const d = `M${upper.map((p) => `${p.x},${p.y}`).join("L")}L${[...lower].reverse().map((p) => `${p.x},${p.y}`).join("L")}Z`;
+  return <path d={d} fill="var(--color-bb)" fillOpacity={0.18} stroke="none" />;
 }
 
 export function PriceChart({
@@ -419,12 +439,9 @@ export function PriceChart({
                   <Cell key={`v-${p.t}`} fill="var(--color-accent)" fillOpacity={p.up ? 0.45 : 0.18} />
                 ))}
               </Bar>
-              {on.bb && (
-                <Customized component={(rest: object) => <BollingerFill {...rest} data={data} />} />
-              )}
               <Area
                 yAxisId="price"
-                type="monotone"
+                type="linear"
                 dataKey="c"
                 stroke="none"
                 fill="url(#pxFill)"
@@ -432,37 +449,41 @@ export function PriceChart({
                 isAnimationActive={false}
               />
               {on.bb && (
+                <Customized component={(rest: object) => <BollingerFill {...rest} data={data} />} />
+              )}
+              {on.bb && (
                 <Line
                   yAxisId="price"
-                  type="monotone"
+                  type="linear"
                   dataKey="upper"
                   stroke="var(--color-bb)"
-                  strokeWidth={2.4}
+                  strokeWidth={1.6}
                   dot={false}
-                  strokeDasharray="7 4"
+                  isAnimationActive={false}
                 />
               )}
               {on.bb && (
                 <Line
                   yAxisId="price"
-                  type="monotone"
+                  type="linear"
                   dataKey="lower"
                   stroke="var(--color-bb)"
-                  strokeWidth={2.4}
+                  strokeWidth={1.6}
                   dot={false}
-                  strokeDasharray="7 4"
+                  isAnimationActive={false}
                 />
               )}
               {on.bb && (
                 <Line
                   yAxisId="price"
-                  type="monotone"
+                  type="linear"
                   dataKey="mid"
                   stroke="var(--color-fg)"
-                  strokeWidth={1.2}
+                  strokeWidth={1}
                   dot={false}
-                  strokeDasharray="2 3"
-                  strokeOpacity={0.7}
+                  strokeDasharray="3 3"
+                  strokeOpacity={0.55}
+                  isAnimationActive={false}
                 />
               )}
               {on.sma20 && (

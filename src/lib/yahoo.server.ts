@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { Bar } from "./analysis";
-import { UNIVERSE } from "./scan";
+import { SCAN_SYMBOLS, UNIVERSE } from "./scan";
 
 const execFileAsync = promisify(execFile);
 
@@ -84,6 +84,32 @@ async function curlJson<T>(url: string): Promise<T> {
     { maxBuffer: 5_000_000 },
   );
   return JSON.parse(stdout) as T;
+}
+
+async function fetchHtml(url: string): Promise<string> {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": UA,
+        Accept: "text/html,application/xhtml+xml",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (res.ok) return await res.text();
+  } catch {
+    /* Docker often has no curl */
+  }
+  try {
+    const { stdout } = await execFileAsync(
+      "curl",
+      ["-sS", "-A", UA, "--compressed", "--max-time", "15", url],
+      { maxBuffer: 4_000_000 },
+    );
+    return stdout;
+  } catch {
+    return "";
+  }
 }
 
 function assetClass(symbol: string, hinted?: string): "etf" | "stocks" {
@@ -734,14 +760,11 @@ export async function fetchHotUnderlyings(): Promise<string[]> {
   };
 
   const scrapeYahoo = async (url: string) => {
-    const { stdout } = await execFileAsync(
-      "curl",
-      ["-sS", "-A", UA, "--compressed", "--max-time", "15", url],
-      { maxBuffer: 4_000_000 },
-    );
-    for (const m of stdout.matchAll(/data-symbol="([A-Z]{1,5})"/g)) push(m[1]);
-    for (const m of stdout.matchAll(/"symbol":"([A-Z]{1,5})"/g)) push(m[1]);
-    for (const m of stdout.matchAll(/\b([A-Z]{1,6})\d{6}[CP]\d{8}\b/g)) push(m[1]);
+    const html = await fetchHtml(url);
+    if (!html) return;
+    for (const m of html.matchAll(/data-symbol="([A-Z]{1,5})"/g)) push(m[1]);
+    for (const m of html.matchAll(/"symbol":"([A-Z]{1,5})"/g)) push(m[1]);
+    for (const m of html.matchAll(/\b([A-Z]{1,6})\d{6}[CP]\d{8}\b/g)) push(m[1]);
   };
 
   for (const url of [
@@ -756,6 +779,7 @@ export async function fetchHotUnderlyings(): Promise<string[]> {
     }
   }
 
+  for (const core of SCAN_SYMBOLS) push(core);
   for (const core of ["SPY", "QQQ", "IWM", "NVDA", "TSLA"]) push(core);
 
   return remember("hot-underlyings", out.slice(0, 45));
