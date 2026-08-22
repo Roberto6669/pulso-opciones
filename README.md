@@ -1,4 +1,4 @@
-# Pulso Options Analyzer — WEB5.0 V3.40
+# Pulso Options Analyzer — WEB5.0 V3.41
 
 Opciones (default), acciones y ETF. Large cap, weeklies ≤7 días, comisión IBKR.
 
